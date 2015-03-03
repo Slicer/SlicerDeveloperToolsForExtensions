@@ -5,40 +5,40 @@ from slicer.ScriptedLoadableModule import *
 import logging
 
 #
-# ManualExtensionInstaller
+# DeveloperToolsForExtensions
 #
 
-class ManualExtensionInstaller(ScriptedLoadableModule):
+class DeveloperToolsForExtensions(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = "Manual Extension Installer"
+        self.parent.title = "Developer Tools For Extensions"
         self.parent.categories = ["Developer Tools"]
         self.parent.dependencies = []
         self.parent.contributors = ["Francois Budin (UNC)"] # replace with "Firstname Lastname (Organization)"
         self.parent.helpText = """
-    This extension allows to install an extension directly from an archive (*.zip or *.tar.gz). \
-    This is useful to verify that your extension has been correctly packaged. This is also useful if \
-    one wants to distribute their extensions through their personal website.
+    This extension gives the developers easy access to convenient functions that are available in Slicer \
+    but difficult to access.
     """
         self.parent.acknowledgementText = """
     This work is supported by NA-MIC and the Slicer Community. See <a>http://www.slicer.org</a> for details.
 """
 
 #
-# ManualExtensionInstallerWidget
+# DeveloperToolsForExtensionsWidget
 #
-class ManualExtensionInstallerWidget(ScriptedLoadableModuleWidget):
+class DeveloperToolsForExtensionsWidget(ScriptedLoadableModuleWidget):
     """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
-        self.fileDialog = None
+        self.extensionFileDialog = None
+        self.moduleFileDialog = None
         icon = self.parent.style().standardIcon(qt.QStyle.SP_ArrowForward)
         iconSize = qt.QSize(22, 22)
         def createToolButton(text):
@@ -63,44 +63,78 @@ class ManualExtensionInstallerWidget(ScriptedLoadableModuleWidget):
         # Parameters Area
         #
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
-        parametersCollapsibleButton.text = "Manual Extension Installer"
+        parametersCollapsibleButton.text = "Developer tools for extensions"
         self.layout.addWidget(parametersCollapsibleButton)
 
         # Layout within the dummy collapsible button
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
-        # Select extension
+        # Select extension to install
 
-        self.extensionSelector = createToolButton("Select extension archive")
+        self.extensionSelector = createToolButton("Install extension archive")
         self.extensionSelector.setToolTip("Select extension archive that has been locally created or manually downloaded")
         parametersFormLayout.addRow(self.extensionSelector)
 
+        #Select script module to load
+        self.moduleSelector = createToolButton("Load module")
+        self.moduleSelector.setToolTip("Select a module you want to load in Slicer")
+        parametersFormLayout.addRow(self.moduleSelector)
+
         # connections
-        self.extensionSelector.connect('clicked(bool)', self.onSelect)
+        self.extensionSelector.connect('clicked(bool)', self.onExtensionSelect)
+        self.moduleSelector.connect('clicked(bool)', self.onModuleSelect)
 
         # Add vertical spacer
         self.layout.addStretch(1)
 
         # Create logic
-        self.logic=ManualExtensionInstallerLogic()
+        self.logic=DeveloperToolsForExtensionsLogic()
 
     def cleanup(self):
         pass
 
-    def onSelect(self):
-        if not self.fileDialog:
-            self.fileDialog = qt.QFileDialog(self.parent)
-            self.fileDialog.options = self.fileDialog.DontUseNativeDialog
-            self.fileDialog.acceptMode = self.fileDialog.AcceptOpen
-            self.fileDialog.setNameFilter("Extension archive (*.zip *.tar.gz)")
-            self.fileDialog.setLabelText( qt.QFileDialog.Accept,"Install" )
-            self.fileDialog.setWindowTitle("Select extension to install")
-            self.fileDialog.connect("fileSelected(QString)", self.onFileSelected)
-        self.fileDialog.show()
+    def customDialog(self,filter,okCaption,windowTitle,):
+        dialog = qt.QFileDialog(self.parent)
+        dialog.options = dialog.DontUseNativeDialog
+        dialog.acceptMode = dialog.AcceptOpen
+        dialog.setNameFilter(filter)
+        dialog.setLabelText( qt.QFileDialog.Accept,okCaption )
+        dialog.setWindowTitle(windowTitle)
+        return dialog
 
-    def onFileSelected(self,fileName):
-        self.fileDialog.hide()
-        if self.logic.run(fileName):
+    def onModuleSelect(self):
+        if not self.moduleFileDialog:
+            self.moduleFileDialog= self.customDialog("Script module (*.py)","Load","Select module to load")
+            self.moduleFileDialog.connect("fileSelected(QString)", self.onModuleFileSelected)
+        self.moduleFileDialog.show()
+
+    def onModuleFileSelected(self,fileName):
+        self.moduleFileDialog.hide()
+        value=qt.QMessageBox.question(slicer.util.mainWindow(),"",
+                                    "Do you want to add module path to permanent search paths?",
+                                    qt.QMessageBox.Yes|qt.QMessageBox.No)
+        permanent = False
+        if value == qt.QMessageBox.Yes:
+            permanent = True
+        try:
+            self.logic.addModule(fileName,permanent)
+            qt.QMessageBox.information(slicer.util.mainWindow(),"",
+                                       "Module "+fileName+" loaded")
+        except Exception as e:
+            logging.critical(e.message)
+            qt.QMessageBox.critical(slicer.util.mainWindow(),"",
+                e.message )
+
+    def onExtensionSelect(self):
+        if not self.extensionFileDialog:
+            self.extensionFileDialog = self.customDialog("Extension archive (*.zip *.tar.gz)",
+                                                         "Install","Select extension to install")
+            self.extensionFileDialog.connect("fileSelected(QString)", self.onExtensionFileSelected)
+        self.extensionFileDialog.show()
+
+    def onExtensionFileSelected(self,fileName):
+        self.extensionFileDialog.hide()
+        if self.logic.installExtension(fileName):
             value=qt.QMessageBox.question(slicer.util.mainWindow(),"",
                                           "Are you sure you want to restart?",qt.QMessageBox.Ok|qt.QMessageBox.No)
             #http://qt-project.org/doc/qt-4.8/qmessagebox.html#StandardButton-enum
@@ -108,12 +142,12 @@ class ManualExtensionInstallerWidget(ScriptedLoadableModuleWidget):
                 slicer.util.restart()
         else:
             qt.QMessageBox.critical(slicer.util.mainWindow(),"",
-                                    "Error during installation. Verify log messages. The extension may already be install")
+                "Error during installation. Verify log messages. The extension may already be install")
 #
-# ManualExtensionInstallerLogic
+# DeveloperToolsForExtensionsLogic
 #
 
-class ManualExtensionInstallerLogic(ScriptedLoadableModuleLogic):
+class DeveloperToolsForExtensionsLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
     computation done by your module.  The interface
     should be such that other python code can import
@@ -145,7 +179,7 @@ class ManualExtensionInstallerLogic(ScriptedLoadableModuleLogic):
         directory, filename = os.path.split(filename)
         return filename in os.listdir(directory)
 
-    def run(self, filename):
+    def installExtension(self, filename):
         """
         Install a given extension, from an archive, in Slicer
         """
@@ -155,13 +189,72 @@ class ManualExtensionInstallerLogic(ScriptedLoadableModuleLogic):
         if not self.PlatformCheck(filename):
             slicer.util.errorDisplay('Extension file for wrong platform')
             return False
-        logging.info('Processing started')
+        logging.info('Extension installation process started')
         val=slicer.app.extensionsManagerModel().installExtension(filename)
-        logging.info('Processing completed')
+        logging.info('Extension installation process completed')
         return val
 
+#-----------------------------------------------------------------------------
+    #from ExtensionWizard.py in Slicer
+    def _settingsList(self,settings, key):
+        """
+        Returns a settings value as a list (even if empty or a single value)
+        """
 
-class ManualExtensionInstallerTest(ScriptedLoadableModuleTest):
+        value = settings.value(key)
+
+        if isinstance(value, basestring):
+            return [value]
+
+        return [] if value is None else value
+
+    #from ExtensionWizard.py in Slicer
+    def addModule(self, fileName, permanent):
+        """
+        Loads a module in the Slicer factory while Slicer is running
+        """
+        logging.info('Module addition process started')
+        # Determine which modules in above are not already loaded
+        factory = slicer.app.moduleManager().factoryManager()
+        myModule=type('moduleType',(),{})
+        myModule.dirPath = os.path.dirname(fileName)
+        myModule.baseName = os.path.basename(fileName)
+        myModule.key, myModule.fileExtension = os.path.splitext(myModule.baseName)
+        if factory.isLoaded(myModule.key):
+            raise Exception("Abort: Module already loaded")
+        if permanent:
+            # Add module(s) to permanent search paths, if requested
+            settings = slicer.app.revisionUserSettings()
+            rawSearchPaths = list(self._settingsList(settings, "Modules/AdditionalPaths"))
+            searchPaths = [qt.QDir(path) for path in rawSearchPaths]
+
+            modified = False
+            rawPath = myModule.dirPath
+            path = qt.QDir(rawPath)
+            if not path in searchPaths:
+                searchPaths.append(path)
+                rawSearchPaths.append(rawPath)
+                modified = True
+
+            if modified:
+                settings.setValue("Modules/AdditionalPaths", rawSearchPaths)
+
+        # Register requested module(s)
+        factory.registerModule(qt.QFileInfo(fileName))
+        if not factory.isRegistered(myModule.key):
+            raise Exception("Abort: Failed to register module %s", myModule.key)
+
+        # Instantiate and load requested module(s)
+        if not factory.loadModules([myModule.key]):
+            raise Exception("Abort: The module factory manager reported an error. \
+                     One or more of the requested module(s) and/or \
+                     dependencies thereof may not have been loaded.")
+        logging.info('Module addition process completed')
+        return True
+
+
+
+class DeveloperToolsForExtensionsTest(ScriptedLoadableModuleTest):
     """
     This is the test case for your scripted module.
     Uses ScriptedLoadableModuleTest base class, available at:
@@ -171,12 +264,12 @@ class ManualExtensionInstallerTest(ScriptedLoadableModuleTest):
     def runTest(self):
     #  """Run as few or as many tests as needed here.
     #  """
-    #  self.test_ManualExtensionInstaller1()
+    #  self.test_DeveloperToolsForExtensions1()
         self.test_PlatformCheck1()
         self.test_PlatformCheck2()
         self.test_CheckFileExistsCaseSensitive1()
         self.test_CheckFileExistsCaseSensitive2()
-        self.test_run()
+        self.test_installExtension()
 
     def test_PlatformCheck1(self):
         """Verifies that platformCheck() works appropriately if filename with correct platform given.
@@ -193,7 +286,7 @@ class ManualExtensionInstallerTest(ScriptedLoadableModuleTest):
                              dummyExtensionName,dummyExtensionSuffix])
         myAbsoluteFileName="/".join([absoluteDummyPath,myFileName])
         logging.info("Check platform with given dummy file name:%s", myAbsoluteFileName)
-        logic = ManualExtensionInstallerLogic()
+        logic = DeveloperToolsForExtensionsLogic()
         self.assertTrue( logic.PlatformCheck(myAbsoluteFileName) )
         self.delayDisplay(testName+': Test passed!')
 
@@ -210,7 +303,7 @@ class ManualExtensionInstallerTest(ScriptedLoadableModuleTest):
         myCurrentOS=slicer.app.os
         myCurrentArch=slicer.app.arch
         myCurrentRev=slicer.app.repositoryRevision
-        logic = ManualExtensionInstallerLogic()
+        logic = DeveloperToolsForExtensionsLogic()
         #check that False is returned for wrong OS
         listOS=['linux','macosx','win']
         listOS.remove(myCurrentOS)
@@ -242,7 +335,7 @@ class ManualExtensionInstallerTest(ScriptedLoadableModuleTest):
         """
         testName="CheckFileExistsCaseSensitive1"
         self.delayDisplay("Starting the test: "+testName)
-        logic = ManualExtensionInstallerLogic()
+        logic = DeveloperToolsForExtensionsLogic()
         slicerPath=slicer.app.applicationFilePath()
         fileDoesNotExists=os.path.join(slicerPath,"fileThatDoesntExist")
         logging.info("Check that the given file which does not exist is not found:%s",fileDoesNotExists)
@@ -254,14 +347,14 @@ class ManualExtensionInstallerTest(ScriptedLoadableModuleTest):
         """
         testName="CheckFileExistsCaseSensitive2"
         self.delayDisplay("Starting the test: "+testName)
-        logic = ManualExtensionInstallerLogic()
+        logic = DeveloperToolsForExtensionsLogic()
         slicerPath=slicer.app.applicationFilePath()
         logging.info("Check that the given file is found:%s",slicerPath)
         self.assertTrue( logic.CheckFileExistsCaseSensitive(slicerPath) )
         self.delayDisplay(testName+': Test passed!')
 
     def _install_dummy_extension(self,myExtensionName):
-        logic = ManualExtensionInstallerLogic()
+        logic = DeveloperToolsForExtensionsLogic()
         myCurrentOS=slicer.app.os
         myCurrentArch=slicer.app.arch
         myCurrentRev=slicer.app.repositoryRevision
@@ -309,12 +402,12 @@ class ManualExtensionInstallerTest(ScriptedLoadableModuleTest):
         except Exception as exception:
             logging.critical(exception)
             return False
-        if logic.run(outputExtensionFileName):
+        if logic.installExtension(outputExtensionFileName):
             slicer.app.extensionsManagerModel().scheduleExtensionForUninstall(myExtensionName)
             return True
         return False
 
-    def test_run(self):
+    def test_installExtension(self):
         """ Downloads and install a fake package. After the installation, is schedule the extension for uninstall
         as it cannot uninstall it right away.
         """

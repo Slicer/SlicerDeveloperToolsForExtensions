@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME ManualExtensionInstaller)
+set(MODULE_NAME DeveloperToolsForExtensions)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
