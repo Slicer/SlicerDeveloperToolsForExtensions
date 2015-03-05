@@ -8,7 +8,7 @@ set(EXTENSION_HOMEPAGE "http://www.example.com/Slicer/Extensions/DeveloperToolsF
 set(EXTENSION_CATEGORY "Developer Tools")
 set(EXTENSION_CONTRIBUTORS "Francois Budin (UNC)")
 set(EXTENSION_DESCRIPTION "This extension allows to install extension directly from a file")
-set(EXTENSION_ICONURL "http://www.example.com/Slicer/Extensions/DeveloperToolsForExtensions.png")
+set(EXTENSION_ICONURL "https://raw.githubusercontent.com/fbudin69500/SlicerDeveloperToolsForExtensions/master/DeveloperToolsForExtensions/Resources/Icons/DeveloperToolsForExtensions.png")
 set(EXTENSION_SCREENSHOTURLS "http://www.example.com/Slicer/Extensions/DeveloperToolsForExtensions/Screenshots/1.png")
 
 #-----------------------------------------------------------------------------
