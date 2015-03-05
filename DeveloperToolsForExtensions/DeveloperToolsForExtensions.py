@@ -1,5 +1,4 @@
 import os
-import unittest
 from __main__ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 import logging
@@ -7,6 +6,7 @@ import logging
 #
 # DeveloperToolsForExtensions
 #
+
 
 class DeveloperToolsForExtensions(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
@@ -18,7 +18,7 @@ class DeveloperToolsForExtensions(ScriptedLoadableModule):
         self.parent.title = "Developer Tools For Extensions"
         self.parent.categories = ["Developer Tools"]
         self.parent.dependencies = []
-        self.parent.contributors = ["Francois Budin (UNC)"] # replace with "Firstname Lastname (Organization)"
+        self.parent.contributors = ["Francois Budin (UNC)"]  # replace with "Firstname Lastname (Organization)"
         self.parent.helpText = """
     This extension gives the developers easy access to convenient functions that are available in Slicer \
     but difficult to access.
@@ -37,6 +37,7 @@ class DeveloperToolsForExtensionsWidget(ScriptedLoadableModuleWidget):
 
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
+        self.timeout = 3000
         self.extensionFileDialog = None
         self.moduleFileDialog = None
         icon = self.parent.style().standardIcon(qt.QStyle.SP_ArrowForward)
@@ -72,10 +73,11 @@ class DeveloperToolsForExtensionsWidget(ScriptedLoadableModuleWidget):
         # Select extension to install
 
         self.extensionSelector = createToolButton("Install extension archive")
-        self.extensionSelector.setToolTip("Select extension archive that has been locally created or manually downloaded")
+        self.extensionSelector.setToolTip("Select extension archive that\
+                                            has been locally created or manually downloaded")
         parametersFormLayout.addRow(self.extensionSelector)
 
-        #Select script module to load
+        # Select script module to load
         self.moduleSelector = createToolButton("Load module")
         self.moduleSelector.setToolTip("Select a module you want to load in Slicer")
         parametersFormLayout.addRow(self.moduleSelector)
@@ -88,64 +90,63 @@ class DeveloperToolsForExtensionsWidget(ScriptedLoadableModuleWidget):
         self.layout.addStretch(1)
 
         # Create logic
-        self.logic=DeveloperToolsForExtensionsLogic()
+        self.logic = DeveloperToolsForExtensionsLogic()
 
     def cleanup(self):
         pass
 
-    def customDialog(self,filter,okCaption,windowTitle,):
+    def customDialog(self, filter_name, okCaption, windowTitle ):
         dialog = qt.QFileDialog(self.parent)
         dialog.options = dialog.DontUseNativeDialog
         dialog.acceptMode = dialog.AcceptOpen
-        dialog.setNameFilter(filter)
-        dialog.setLabelText( qt.QFileDialog.Accept,okCaption )
+        dialog.setNameFilter(filter_name)
+        dialog.setLabelText(qt.QFileDialog.Accept, okCaption)
         dialog.setWindowTitle(windowTitle)
         return dialog
 
     def onModuleSelect(self):
         if not self.moduleFileDialog:
-            self.moduleFileDialog= self.customDialog("Script module (*.py)","Load","Select module to load")
+            self.moduleFileDialog = self.customDialog("Script module (*.py)", "Load", "Select module to load")
             self.moduleFileDialog.connect("fileSelected(QString)", self.onModuleFileSelected)
         self.moduleFileDialog.show()
 
-    def onModuleFileSelected(self,fileName):
+    def onModuleFileSelected(self, fileName):
         self.moduleFileDialog.hide()
-        value=qt.QMessageBox.question(slicer.util.mainWindow(),"",
-                                    "Do you want to add module path to permanent search paths?",
-                                    qt.QMessageBox.Yes|qt.QMessageBox.No)
+        value = qt.QMessageBox.question(slicer.util.mainWindow(), "",
+                                      "Do you want to add module path to permanent search paths?",
+                                      qt.QMessageBox.Yes | qt.QMessageBox.No)
         permanent = False
         if value == qt.QMessageBox.Yes:
             permanent = True
         try:
             self.logic.addModule(fileName,permanent)
-            qt.QMessageBox.information(slicer.util.mainWindow(),"",
-                                       "Module "+fileName+" loaded")
+            slicer.util.delayDisplay("Module "+fileName+" loaded", self.timeout)
         except Exception as e:
             logging.critical(e.message)
-            qt.QMessageBox.critical(slicer.util.mainWindow(),"",
-                e.message )
+            slicer.util.errorDisplay(e.message, self.timeout)
 
     def onExtensionSelect(self):
         if not self.extensionFileDialog:
             self.extensionFileDialog = self.customDialog("Extension archive (*.zip *.tar.gz)",
-                                                         "Install","Select extension to install")
+                                                         "Install", "Select extension to install")
             self.extensionFileDialog.connect("fileSelected(QString)", self.onExtensionFileSelected)
         self.extensionFileDialog.show()
 
-    def onExtensionFileSelected(self,fileName):
+    def onExtensionFileSelected(self, fileName):
         self.extensionFileDialog.hide()
-        if self.logic.installExtension(fileName):
-            value=qt.QMessageBox.question(slicer.util.mainWindow(),"",
-                                          "Are you sure you want to restart?",qt.QMessageBox.Ok|qt.QMessageBox.No)
-            #http://qt-project.org/doc/qt-4.8/qmessagebox.html#StandardButton-enum
+        try:
+            self.logic.installExtension(fileName)
+            value=qt.QMessageBox.question(slicer.util.mainWindow(), "",
+                                          "Are you sure you want to restart?", qt.QMessageBox.Ok | qt.QMessageBox.No)
+            # http://qt-project.org/doc/qt-4.8/qmessagebox.html#StandardButton-enum
             if value == qt.QMessageBox.Ok:
                 slicer.util.restart()
-        else:
-            qt.QMessageBox.critical(slicer.util.mainWindow(),"",
-                "Error during installation. Verify log messages. The extension may already be install")
+        except Exception as e:
+            slicer.util.errorDisplay(e.message, self.timeout)
 #
 # DeveloperToolsForExtensionsLogic
 #
+
 
 class DeveloperToolsForExtensionsLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
@@ -156,21 +157,24 @@ class DeveloperToolsForExtensionsLogic(ScriptedLoadableModuleLogic):
     Uses ScriptedLoadableModuleLogic base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-    def PlatformCheck(self,filename):
+    def PlatformCheck(self, filename):
         """Compare extension platform with current platform.
         """
-        name=os.path.basename(filename)
-        extensionrepositoryRevision,extensionos,extensionarch=name.split('-')[:3]
-        for var in ('repositoryRevision','os','arch'):
-            currentVar=getattr(slicer.app,var)
-            extensionVar=locals()['extension'+var]
+        name = os.path.basename(filename)
+        try:
+          extensionrepositoryRevision, extensionos, extensionarch = name.split('-')[:3]
+        except:
+            raise Exception('extension name does not match expected format \
+                            (Revision-OS-Arch-NameAndExtension)')
+        for var in ('repositoryRevision', 'os', 'arch'):
+            currentVar = getattr(slicer.app, var)
+            extensionVar = locals()['extension'+var]
             if extensionVar != currentVar:
-                logging.error(var+": "+currentVar+"(Slicer) "+extensionVar+"(extension)")
-                return False
+                raise Exception(var+": "+currentVar+"(Slicer) "+extensionVar+"(extension)")
         return True
 
-    #http://stackoverflow.com/questions/17277566/check-os-path-isfilefilename-with-case-sensitive-in-python
-    def CheckFileExistsCaseSensitive(self,filename):
+    # http://stackoverflow.com/questions/17277566/check-os-path-isfilefilename-with-case-sensitive-in-python
+    def CheckFileExistsCaseSensitive(self, filename):
         """Verifies that the given file exists. Default python function to do so (\
         os.path.isfile(filename) ) is not case-sensitive.
         """
@@ -183,20 +187,21 @@ class DeveloperToolsForExtensionsLogic(ScriptedLoadableModuleLogic):
         """
         Install a given extension, from an archive, in Slicer
         """
-        if not self.CheckFileExistsCaseSensitive(filename):
-            slicer.util.errorDisplay('Extension file does not exist')
-            return False
-        if not self.PlatformCheck(filename):
-            slicer.util.errorDisplay('Extension file for wrong platform')
-            return False
+        try:
+            self.CheckFileExistsCaseSensitive(filename)
+        except:
+            raise Exception('Extension file does not exist')
+        try:
+            self.PlatformCheck(filename)
+        except:
+            raise Exception('Extension file for wrong platform')
         logging.info('Extension installation process started')
-        val=slicer.app.extensionsManagerModel().installExtension(filename)
+        val = slicer.app.extensionsManagerModel().installExtension(filename)
         logging.info('Extension installation process completed')
         return val
 
-#-----------------------------------------------------------------------------
-    #from ExtensionWizard.py in Slicer
-    def _settingsList(self,settings, key):
+    # From ExtensionWizard.py in Slicer
+    def _settingsList(self, settings, key):
         """
         Returns a settings value as a list (even if empty or a single value)
         """
@@ -208,7 +213,7 @@ class DeveloperToolsForExtensionsLogic(ScriptedLoadableModuleLogic):
 
         return [] if value is None else value
 
-    #from ExtensionWizard.py in Slicer
+    # From ExtensionWizard.py in Slicer
     def addModule(self, fileName, permanent):
         """
         Loads a module in the Slicer factory while Slicer is running
@@ -216,7 +221,7 @@ class DeveloperToolsForExtensionsLogic(ScriptedLoadableModuleLogic):
         logging.info('Module addition process started')
         # Determine which modules in above are not already loaded
         factory = slicer.app.moduleManager().factoryManager()
-        myModule=type('moduleType',(),{})
+        myModule = type('moduleType', (), {})
         myModule.dirPath = os.path.dirname(fileName)
         myModule.baseName = os.path.basename(fileName)
         myModule.key, myModule.fileExtension = os.path.splitext(myModule.baseName)
@@ -231,7 +236,7 @@ class DeveloperToolsForExtensionsLogic(ScriptedLoadableModuleLogic):
             modified = False
             rawPath = myModule.dirPath
             path = qt.QDir(rawPath)
-            if not path in searchPaths:
+            if path not in searchPaths:
                 searchPaths.append(path)
                 rawSearchPaths.append(rawPath)
                 modified = True
@@ -253,7 +258,6 @@ class DeveloperToolsForExtensionsLogic(ScriptedLoadableModuleLogic):
         return True
 
 
-
 class DeveloperToolsForExtensionsTest(ScriptedLoadableModuleTest):
     """
     This is the test case for your scripted module.
@@ -262,9 +266,8 @@ class DeveloperToolsForExtensionsTest(ScriptedLoadableModuleTest):
     """
 
     def runTest(self):
-    #  """Run as few or as many tests as needed here.
-    #  """
-    #  self.test_DeveloperToolsForExtensions1()
+        # """Run as few or as many tests as needed here.
+        # """
         self.test_PlatformCheck1()
         self.test_PlatformCheck2()
         self.test_CheckFileExistsCaseSensitive1()
@@ -274,131 +277,140 @@ class DeveloperToolsForExtensionsTest(ScriptedLoadableModuleTest):
     def test_PlatformCheck1(self):
         """Verifies that platformCheck() works appropriately if filename with correct platform given.
         """
-        testName="PlatformCheck1"
+        testName = "PlatformCheck1"
         self.delayDisplay("Starting the test: "+testName)
-        absoluteDummyPath="/test/hello"
-        dummyExtensionName="myExtension"
-        dummyExtensionSuffix="svn224-2014-07-28.tar.gz"#Extension does not matter for this test
-        myCurrentOS=slicer.app.os
-        myCurrentArch=slicer.app.arch
-        myCurrentRev=slicer.app.repositoryRevision
-        myFileName="-".join([myCurrentRev,myCurrentOS,myCurrentArch,
-                             dummyExtensionName,dummyExtensionSuffix])
-        myAbsoluteFileName="/".join([absoluteDummyPath,myFileName])
+        absoluteDummyPath = "/test/hello"
+        dummyExtensionName = "myExtension"
+        dummyExtensionSuffix = "svn224-2014-07-28.tar.gz"  # Extension does not matter for this test
+        myCurrentOS = slicer.app.os
+        myCurrentArch = slicer.app.arch
+        myCurrentRev = slicer.app.repositoryRevision
+        myFileName = "-".join([myCurrentRev, myCurrentOS, myCurrentArch,
+                              dummyExtensionName, dummyExtensionSuffix])
+        myAbsoluteFileName = "/".join([absoluteDummyPath, myFileName])
         logging.info("Check platform with given dummy file name:%s", myAbsoluteFileName)
         logic = DeveloperToolsForExtensionsLogic()
-        self.assertTrue( logic.PlatformCheck(myAbsoluteFileName) )
+        self.assertTrue(logic.PlatformCheck(myAbsoluteFileName))
         self.delayDisplay(testName+': Test passed!')
 
     def test_PlatformCheck2(self):
-        """Verifies that plafformCheck() returns errors when the given file
+        """Verifies that plafformCheck() raises exceptions when the given file
         does not correspond to the current platform. Tests with wrong OS, wrong architecture
         and wrong revision number.
         """
-        testName="PlateformCheck2"
+        testName = "PlatformCheck2"
         self.delayDisplay("Starting the test: "+testName)
-        absoluteDummyPath="/test/hello"
-        dummyExtensionName="myExtension"
-        dummyExtensionSuffix="svn224-2014-07-28.tar.gz"#Extension does not matter for this test
-        myCurrentOS=slicer.app.os
-        myCurrentArch=slicer.app.arch
-        myCurrentRev=slicer.app.repositoryRevision
+        absoluteDummyPath = "/test/hello"
+        dummyExtensionName = "myExtension"
+        dummyExtensionSuffix = "svn224-2014-07-28.tar.gz"  # Extension does not matter for this test
+        myCurrentOS = slicer.app.os
+        myCurrentArch = slicer.app.arch
+        myCurrentRev = slicer.app.repositoryRevision
         logic = DeveloperToolsForExtensionsLogic()
-        #check that False is returned for wrong OS
-        listOS=['linux','macosx','win']
+        # check that an exception is raised for wrong OS
+        listOS = ['linux', 'macosx', 'win']
         listOS.remove(myCurrentOS)
         for testOS in listOS:
-            myFileName="-".join([myCurrentRev,testOS,myCurrentArch,
-                             dummyExtensionName,dummyExtensionSuffix])
-            myAbsoluteFileName="/".join([absoluteDummyPath,myFileName])
+            myFileName = "-".join([myCurrentRev, testOS, myCurrentArch,
+                                  dummyExtensionName, dummyExtensionSuffix])
+            myAbsoluteFileName = "/".join([absoluteDummyPath,myFileName])
             logging.info("Check platform with given dummy file name:%s", myAbsoluteFileName)
-            self.assertTrue( not logic.PlatformCheck(myAbsoluteFileName) )
-        #Check that False is returned for wrong revision number
-        badRev="xxxxx"
-        myFileName="-".join([badRev,myCurrentOS,myCurrentArch,
-                             dummyExtensionName,dummyExtensionSuffix])
-        myAbsoluteFileName="/".join([absoluteDummyPath,myFileName])
+            with self.assertRaises(Exception) as cm:
+              logic.PlatformCheck(myAbsoluteFileName)
+            e = cm.exception
+            self.assertEqual(e.message, "os: "+myCurrentOS+"(Slicer) "+testOS+"(extension)")
+        # Check that False is returned for wrong revision number
+        badRev = "xxxxx"
+        myFileName = "-".join([badRev, myCurrentOS, myCurrentArch,
+                               dummyExtensionName, dummyExtensionSuffix])
+        myAbsoluteFileName = "/".join([absoluteDummyPath, myFileName])
         logging.info("Check platform with given dummy file name:%s", myAbsoluteFileName)
-        self.assertTrue( not logic.PlatformCheck(myAbsoluteFileName) )
-        #Check that False is returned for wrong architecture detected
-        badArchitecture="badArch"
-        myFileName="-".join([myCurrentRev,myCurrentOS,badArchitecture,
-                             dummyExtensionName,dummyExtensionSuffix])
-        myAbsoluteFileName="/".join([absoluteDummyPath,myFileName])
+        with self.assertRaises(Exception) as cm:
+          logic.PlatformCheck(myAbsoluteFileName)
+        e = cm.exception
+        self.assertEqual(e.message, "repositoryRevision: "+myCurrentRev+"(Slicer) "+badRev+"(extension)")
+        # Check that False is returned for wrong architecture detected
+        badArchitecture = "badArch"
+        myFileName = "-".join([myCurrentRev, myCurrentOS, badArchitecture,
+                              dummyExtensionName, dummyExtensionSuffix])
+        myAbsoluteFileName = "/".join([absoluteDummyPath, myFileName])
         logging.info("Check platform with given dummy file name:%s", myAbsoluteFileName)
-        self.assertTrue( not logic.PlatformCheck(myAbsoluteFileName) )
+        with self.assertRaises(Exception) as cm:
+          logic.PlatformCheck(myAbsoluteFileName)
+        e = cm.exception
+        self.assertEqual(e.message, "arch: "+myCurrentArch+"(Slicer) "+badArchitecture+"(extension)")
         self.delayDisplay(testName+': Test passed!')
 
     def test_CheckFileExistsCaseSensitive1(self):
         """Checks that CheckFileExistsCaseSensitive returns False if given file does
         not exist.
         """
-        testName="CheckFileExistsCaseSensitive1"
+        testName = "CheckFileExistsCaseSensitive1"
         self.delayDisplay("Starting the test: "+testName)
         logic = DeveloperToolsForExtensionsLogic()
-        slicerPath=slicer.app.applicationFilePath()
-        fileDoesNotExists=os.path.join(slicerPath,"fileThatDoesntExist")
-        logging.info("Check that the given file which does not exist is not found:%s",fileDoesNotExists)
-        self.assertTrue( not logic.CheckFileExistsCaseSensitive(fileDoesNotExists) )
+        slicerPath = slicer.app.applicationFilePath()
+        fileDoesNotExists = os.path.join(slicerPath, "fileThatDoesntExist")
+        logging.info("Check that the given file which does not exist is not found:%s", fileDoesNotExists)
+        self.assertTrue(not logic.CheckFileExistsCaseSensitive(fileDoesNotExists))
         self.delayDisplay(testName+': Test passed!')
 
     def test_CheckFileExistsCaseSensitive2(self):
         """Checks that CheckFileExistsCaseSensitive returns True if given file exists.
         """
-        testName="CheckFileExistsCaseSensitive2"
+        testName = "CheckFileExistsCaseSensitive2"
         self.delayDisplay("Starting the test: "+testName)
         logic = DeveloperToolsForExtensionsLogic()
-        slicerPath=slicer.app.applicationFilePath()
-        logging.info("Check that the given file is found:%s",slicerPath)
-        self.assertTrue( logic.CheckFileExistsCaseSensitive(slicerPath) )
+        slicerPath = slicer.app.applicationFilePath()
+        logging.info("Check that the given file is found:%s", slicerPath)
+        self.assertTrue(logic.CheckFileExistsCaseSensitive(slicerPath))
         self.delayDisplay(testName+': Test passed!')
 
-    def _install_dummy_extension(self,myExtensionName):
+    def _install_dummy_extension(self, myExtensionName):
         logic = DeveloperToolsForExtensionsLogic()
-        myCurrentOS=slicer.app.os
-        myCurrentArch=slicer.app.arch
-        myCurrentRev=slicer.app.repositoryRevision
-        #The only archive format we are sure we have is zip, through the python interface.
-        #Since this format works on the 3 platforms we support (Windows, MacOS, and linux),
-        #we use this format instead of 'tar.gz' on linux and MacOS.
-        extenstion=".zip"
-        myExtensionFileRootName="-".join([myCurrentRev,myCurrentOS,myCurrentArch,myExtensionName])
+        myCurrentOS = slicer.app.os
+        myCurrentArch = slicer.app.arch
+        myCurrentRev = slicer.app.repositoryRevision
+        # The only archive format we are sure we have is zip, through the python interface.
+        # Since this format works on the 3 platforms we support (Windows, MacOS, and linux),
+        # we use this format instead of 'tar.gz' on linux and MacOS.
+        extenstion = ".zip"
+        myExtensionFileRootName = "-".join([myCurrentRev, myCurrentOS, myCurrentArch, myExtensionName])
         tempPath = slicer.app.temporaryPath
-        currentFilePath=os.path.dirname(os.path.realpath(__file__))
-        inputDescriptionFile=os.path.join(currentFilePath,"Testing","Python","myDummyExtension.s4ext")
-        myCurrentOS=slicer.app.os
-        myCurrentVersion=slicer.app.applicationVersion
-        versionNoDate=myCurrentVersion.split("-")#Get version number without date
-        versionSplit=versionNoDate[0].split(".")#Split major.minor.patch
-        #Create a variable containing a string of the form "Slicer-4.4"
-        slicerVersionDirectory="Slicer-"+versionSplit[0]+"."+versionSplit[1]
-        if myCurrentOS=="macosx":
-            internalPackagePath=os.path.join(myExtensionFileRootName,
-                                             "Slicer.app","Contents",
-                                             "Extensions-"+myCurrentRev,myExtensionName,
-                                             "share",slicerVersionDirectory)
-        else: # "win" or linux
-            internalPackagePath=os.path.join("share",slicerVersionDirectory)
+        currentFilePath = os.path.dirname(os.path.realpath(__file__))
+        inputDescriptionFile = os.path.join(currentFilePath, "Testing", "Python", "myDummyExtension.s4ext")
+        myCurrentOS = slicer.app.os
+        myCurrentVersion = slicer.app.applicationVersion
+        versionNoDate = myCurrentVersion.split("-")  # Get version number without date
+        versionSplit = versionNoDate[0].split(".")  # Split major.minor.patch
+        # Create a variable containing a string of the form "Slicer-4.4"
+        slicerVersionDirectory = "Slicer-"+versionSplit[0]+"."+versionSplit[1]
+        if myCurrentOS == "macosx":
+            internalPackagePath = os.path.join(myExtensionFileRootName,
+                                               "Slicer.app", "Contents",
+                                               "Extensions-"+myCurrentRev, myExtensionName,
+                                               "share", slicerVersionDirectory)
+        else:  # "win" or linux
+            internalPackagePath = os.path.join(myExtensionFileRootName,"share", slicerVersionDirectory)
         import errno
         try:
-            pathToCreate=os.path.join(tempPath,internalPackagePath)
+            pathToCreate = os.path.join(tempPath, internalPackagePath)
             logging.info("Directory to create for test extension: "+pathToCreate)
             os.makedirs(pathToCreate)
         except OSError as exception:
-            if exception.errno != errno.EEXIST:#We report error except if it is because directory already exists
+            if exception.errno != errno.EEXIST:  # We report error except if it is because directory already exists
                 logging.critical("Error while creating extension directory in temp folder")
                 return False
             logging.info("Extension directory already exists")
         try:
             import shutil
-            outputDescriptionFile=os.path.join(pathToCreate,myExtensionName+".s4ext")
-            shutil.copyfile(inputDescriptionFile,outputDescriptionFile)
-            myExtensionFileName=myExtensionFileRootName+extenstion
-            myExtensionInputDirectory=os.path.join(tempPath,myExtensionFileRootName)
-            outputExtensionFileName=os.path.join(tempPath,myExtensionFileName)
+            outputDescriptionFile = os.path.join(pathToCreate, myExtensionName+".s4ext")
+            shutil.copyfile(inputDescriptionFile, outputDescriptionFile)
+            myExtensionFileName = myExtensionFileRootName+extenstion
+            myExtensionInputDirectory = os.path.join(tempPath, myExtensionFileRootName)
+            outputExtensionFileName = os.path.join(tempPath, myExtensionFileName)
             logging.info("Output zipped file name:"+outputExtensionFileName)
             logging.info("Directory to zip:"+myExtensionInputDirectory)
-            slicer.vtkMRMLApplicationLogic().Zip(outputExtensionFileName,myExtensionInputDirectory)
+            slicer.vtkMRMLApplicationLogic().Zip(outputExtensionFileName, myExtensionInputDirectory)
         except Exception as exception:
             logging.critical(exception)
             return False
@@ -411,9 +423,9 @@ class DeveloperToolsForExtensionsTest(ScriptedLoadableModuleTest):
         """ Downloads and install a fake package. After the installation, is schedule the extension for uninstall
         as it cannot uninstall it right away.
         """
-        testName="CheckIfInstallTestExtensionWorks"
-        myTestExtension="myTestExtension"
-        #In case the extension is already installed, skip test and schedule for removal.
+        testName = "CheckIfInstallTestExtensionWorks"
+        myTestExtension = "myTestExtension"
+        # In case the extension is already installed, skip test and schedule for removal.
         if slicer.app.extensionsManagerModel().isExtensionInstalled(myTestExtension):
             slicer.app.extensionsManagerModel().scheduleExtensionForUninstall(myTestExtension)
             logging.info("Extension already installed. Scheduled to be removed.")
@@ -421,5 +433,5 @@ class DeveloperToolsForExtensionsTest(ScriptedLoadableModuleTest):
                               3000)
             return
         self.delayDisplay("Starting the test: "+testName)
-        self.assertTrue( self._install_dummy_extension(myTestExtension) )
+        self.assertTrue(self._install_dummy_extension(myTestExtension))
         self.delayDisplay(testName+': Test passed!')
