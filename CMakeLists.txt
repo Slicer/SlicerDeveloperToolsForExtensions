@@ -7,9 +7,9 @@ project(DeveloperToolsForExtensions)
 set(EXTENSION_HOMEPAGE "http://www.slicer.org/slicerWiki/index.php/Documentation/Nightly/Extensions/DeveloperToolsForExtensions")
 set(EXTENSION_CATEGORY "Developer Tools")
 set(EXTENSION_CONTRIBUTORS "Francois Budin (UNC)")
-set(EXTENSION_DESCRIPTION "This extension allows to install extension directly from a file")
+set(EXTENSION_DESCRIPTION "This extension offers different tools to help developers when they create Slicer extension.")
 set(EXTENSION_ICONURL "https://raw.githubusercontent.com/fbudin69500/SlicerDeveloperToolsForExtensions/master/DeveloperToolsForExtensions/Resources/Icons/DeveloperToolsForExtensions.png")
-set(EXTENSION_SCREENSHOTURLS "http://www.slicer.org/slicerWiki/images/5/54/SlicerExtension-SlicerDeveloperToolsForExtensions-Screenshot.png")
+set(EXTENSION_SCREENSHOTURLS "http://www.slicer.org/slicerWiki/images/5/54/SlicerExtension-SlicerDeveloperToolsForExtensions-Screenshot.png http://www.slicer.org/slicerWiki/images/d/db/SlicerExtensions-SlicerDeveloperToolsForExtensions-Screenshot-panels.png")
 
 #-----------------------------------------------------------------------------
 # Extension dependencies
