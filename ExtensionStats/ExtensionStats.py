@@ -131,6 +131,8 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
     releaseNameColumn = vtk.vtkStringArray()
     releaseNameColumn.SetName("Release")
     releases = self.logic.getSlicerReleases()
+    # sort releases based on SVN revision    
+    releases = collections.OrderedDict(sorted(releases.items(), key=lambda t: t[1]))
     for release in releases.keys():
       releaseNameColumn.InsertNextValue(release)
     
