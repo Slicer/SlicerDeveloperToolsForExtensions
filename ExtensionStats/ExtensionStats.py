@@ -60,13 +60,19 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
 
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
+    extensionNameBox = qt.QHBoxLayout()
+    
     self.extensionNameEdit = qt.QLineEdit()
     self.extensionNameEdit.setText('')
-    parametersFormLayout.addRow("Extension name: ", self.extensionNameEdit)
+    extensionNameBox.addWidget(self.extensionNameEdit)
 
-    self.midasQueryUrlEdit = qt.QLineEdit()
-    self.midasQueryUrlEdit.setText('http://slicer.kitware.com/midas3/api/json')
-    parametersFormLayout.addRow("MIDAS json query URL: ", self.midasQueryUrlEdit)
+    self.extensionNameAllButton = qt.QPushButton()
+    self.extensionNameAllButton.text = "all"
+    self.extensionNameAllButton.toolTip = "Get statistics for all extensions"
+    extensionNameBox.addWidget(self.extensionNameAllButton)
+    self.populateExtensionNameEdit()
+    
+    parametersFormLayout.addRow("Extension name: ", extensionNameBox)    
     
     self.applyButton = qt.QPushButton("Get download statistics")
     self.applyButton.toolTip = "Get download statistics"
@@ -76,21 +82,28 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
     parametersFormLayout.addRow("Status:", self.statusText)
     
     # Stats table
-    self.statsTable = qt.QTableWidget()
-    self.statsTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
-    parametersFormLayout.addRow("Statistics:", self.statsTable)
-    self.statsTableHeader = ['Revision', 'Downloads']
+    self.statsTableWidget = slicer.qMRMLTableView()
+    self.statsTableWidget.setMRMLScene(slicer.mrmlScene)
+    parametersFormLayout.addRow("Statistics:", self.statsTableWidget)
     policy = qt.QSizePolicy()
     policy.setVerticalStretch(1)
     policy.setHorizontalPolicy(qt.QSizePolicy.Expanding)
     policy.setVerticalPolicy(qt.QSizePolicy.Expanding)
-    self.statsTable.setSizePolicy(policy)
+    self.statsTableWidget.setSizePolicy(policy)    
+    
+    self.statsTableNode = slicer.vtkMRMLTableNode()
+    self.statsTableNode.SetName('ExtensionStats')
+    self.statsTableNode.SetUseColumnNameAsColumnHeader(True)
+    self.statsTableNode.SetUseFirstColumnAsRowHeader(True)    
+    slicer.mrmlScene.AddNode(self.statsTableNode)
+    self.statsTableWidget.setMRMLTableNode(self.statsTableNode)
 
     # Copy to clipboard button
     self.copyToClipboardButton = qt.QPushButton("Copy table to clipboard")
     parametersFormLayout.addRow('', self.copyToClipboardButton)    
     
     # connections
+    self.extensionNameAllButton.connect('clicked()', self.populateExtensionNameEdit)
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
     self.copyToClipboardButton.connect('clicked()', self.copyTableToClipboard)
 
@@ -100,6 +113,10 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
   def cleanup(self):
     pass
 
+  def populateExtensionNameEdit(self):
+    extensionNames = ",".join(self.logic.getExtensionNames())
+    self.extensionNameEdit.setText(extensionNames)
+    
   def onApplyButton(self):
   
     if self.queryInProgress:
@@ -109,57 +126,61 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
       slicer.app.processEvents()
       return
     
-    self.clearStatsTable()
+    # Initialize table contents: clear and add release column
+    self.statsTableNode.RemoveAllColumns()    
+    releaseNameColumn = vtk.vtkStringArray()
+    releaseNameColumn.SetName("Release")
+    releases = self.logic.getSlicerReleases()
+    for release in releases.keys():
+      releaseNameColumn.InsertNextValue(release)
     
-    self.applyButton.setText("Cancel")    
+    self.applyButton.setText("Cancel")
     self.queryInProgress = True
     slicer.app.processEvents()
-    
-    #release_downloads = slicer.stats
-    
-    release_downloads = self.logic.getExtensionDownloadStats(self.midasQueryUrlEdit.text, self.extensionNameEdit.text)
-    #slicer.stats = release_downloads # save results -- only for testing
 
+    for extensionName in self.extensionNameEdit.text.split(','):
+      
+      extensionName.strip() # trim whitespace
+      
+      release_downloads = self.logic.getExtensionDownloadStats(self.logic.getDefaultMidasJsonQueryUrl(), extensionName)
+   
+      if self.logic.getCancelRequested():
+        break
+   
+      # Add row header only if there is also some numbers to add
+      if self.statsTableNode.GetNumberOfColumns()==0:
+        self.statsTableNode.AddColumn(releaseNameColumn)
+      
+      # Add results to table
+      extensionColumn = vtk.vtkStringArray()
+      extensionColumn.SetName(extensionName)
+      for release in releases.keys():
+        if release in release_downloads.keys():
+          extensionColumn.InsertNextValue(str(release_downloads[release]))
+        else:
+          extensionColumn.InsertNextValue("0")
+      self.statsTableNode.AddColumn(extensionColumn)
+      
     self.queryInProgress = False
     self.logic.setCancelRequested(False)
     self.applyButton.setText("Get download statistics")
     self.applyButton.enabled = True
 
-    self.updateStatsTable(release_downloads)
-    
-  def clearStatsTable(self):
-    self.statsTable.clear()
-    self.statsTable.setRowCount( 0 )
-    self.statsTable.setColumnCount( 0 )
-    
-  def updateStatsTable(self, release_downloads):
-    self.statsTable.setRowCount(len(release_downloads));
-    self.statsTable.setColumnCount(len(self.statsTableHeader));
-    self.statsTable.setHorizontalHeaderLabels(self.statsTableHeader)
-    
-    self.items = []
-    row = 0
-    for release, downloads in release_downloads.items():    
-      item = qt.QTableWidgetItem(release)
-      self.items.append(item) # required, otherwise the item does not appear
-      item.setFlags(item.flags() ^ qt.Qt.ItemIsEditable) # make the item read-only
-      self.statsTable.setItem(row,0,item)
-      item = qt.QTableWidgetItem(str(downloads))
-      self.items.append(item) # required, otherwise the item does not appear
-      item.setFlags(item.flags() ^ qt.Qt.ItemIsEditable) # make the item read-only
-      self.statsTable.setItem(row,1,item)
-      row = row + 1
-  
-    self.statsTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)    
-    
   def copyTableToClipboard(self):
-    tableText = '\t'.join(self.statsTableHeader) # convert list to tab-separated string
-    for rowIndex in xrange(self.statsTable.rowCount):
+    table = self.statsTableNode.GetTable()
+    tableText = ''
+    
+    header = []
+    for columnIndex in range(table.GetNumberOfColumns()):
+      header.append(table.GetColumn(columnIndex).GetName())
+    tableText += '\t'.join(header) # convert list to tab-separated string
+
+    for rowIndex in range(table.GetNumberOfRows()):
       tableText += '\n'
-      for columnIndex in xrange(self.statsTable.columnCount):
+      for columnIndex in range(table.GetNumberOfColumns()):
         if columnIndex>0:
           tableText += '\t'
-        tableText += self.statsTable.item(rowIndex,columnIndex).text()
+        tableText += table.GetColumn(columnIndex).GetValue(rowIndex)
     qt.QApplication.clipboard().setText(tableText)
 
   def setStatusText(self, text):
@@ -183,6 +204,111 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
     ScriptedLoadableModuleLogic.__init__(self)
     self.statusCallback = None
     self.cancelRequested = False
+  
+  def getDefaultMidasJsonQueryUrl(self):
+   return "http://slicer.kitware.com/midas3/api/json"
+
+  def getExtensionNames(self):
+    # List of extension names obtained doing:
+    #  $ git clone github.com/Slicer/ExtensionsIndex SlicerExtensionsIndex
+    #  $ cd SlicerExtensionsIndex
+    #  $ for name in $(ls -1 | cut -d"." -f1); do echo "'$name',"; done
+    #
+    extension_names = [
+    'ABC',
+    'AnglePlanesExtension',
+    'boost',
+    'CardiacAgatstonMeasures',
+    'Cardiac_MRI_Toolkit',
+    'CarreraSlice',
+    'CBC_3D_I2MConversion',
+    'ChangeTracker',
+    'Chest_Imaging_Platform',
+    'CleaverExtension',
+    'CMFreg',
+    'CornerAnnotation',
+    'CurveMaker',
+    'DebuggingTools',
+    'DeveloperToolsForExtensions',
+    'DiceComputation',
+    'DSCMRIAnalysis',
+    'DTIAtlasBuilder',
+    'DTIAtlasFiberAnalyzer',
+    'DTIPrep',
+    'DTIProcess',
+    'DTI-Reg',
+    'EasyClip',
+    'Eigen',
+    'ErodeDilateLabel',
+    'FacetedVisualizer',
+    'FastGrowCutEffect',
+    'FiberViewerLight',
+    'FinslerTractography',
+    'GelDosimetryAnalysis',
+    'GraphCutSegment',
+    'GyroGuide',
+    'IASEM',
+    'iGyne',
+    'ImageMaker',
+    'IntensitySegmenter',
+    'LAScarSegmenter',
+    'LASegmenter',
+    'LightWeightRobotIGT',
+    'LongitudinalPETCT',
+    'LumpNav',
+    'MABMIS',
+    'MarginCalculator',
+    'MatlabBridge',
+    'MeshStatisticsExtension',
+    'MeshToLabelMap',
+    'ModelClip',
+    'ModelToModelDistance',
+    'mpReview',
+    'NeedleFinder',
+    'OpenCAD',
+    'PBNRR',
+    'PercutaneousApproachAnalysis',
+    'PerkTutor',
+    'PETDICOMExtension',
+    'PET-IndiC',
+    'PetSpectAnalysis',
+    'PETTumorSegmentation',
+    'PickAndPaintExtension',
+    'PkModeling',
+    'PortPlacement',
+    'Q3DC',
+    'README',
+    'Reporting',
+    'ResampleDTIlogEuclidean',
+    'ResectionPlanner',
+    'RSSExtension',
+    'Scoliosis',
+    'SegmentationAidedRegistration',
+    'Sequences',
+    'ShapePopulationViewer',
+    'SkullStripper',
+    'Slicer-AirwaySegmentation',
+    'SlicerExtension-VMTK',
+    'SlicerHeart',
+    'SlicerIGT',
+    'SlicerOpenCV',
+    'SlicerProstate',
+    'SlicerRT',
+    'SlicerToKiwiExporter',
+    'Slicer-TrackerStabilizer',
+    'Slicer-Wasp',
+    'SobolevSegmenter',
+    'SPHARM-PDM',
+    'SwissSkullStripper',
+    'T1Mapping',
+    'TCIABrowser',
+    'ThingiverseBrowser',
+    'UKFTractography',
+    'VolumeClip',
+    'WindowLevelEffect',
+    'XNATSlicer',
+    ]
+    return extension_names
 
   def setStatusCallback(self, callbackMethod):
     self.statusCallback = callbackMethod
@@ -296,20 +422,20 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
       """Return a dictionary of slicer revision and download counts for
       the given ``extensionName``.
       """
-      self.setStatus("Collecting 'extension_id' / 'item_id' pair matching '{0}' name".format(extensionName))
+      self.setStatus("Collecting list of packages for extension '{0}'".format(extensionName))
       all_itemids = [(ext['item_id'], ext['extension_id']) for ext in self.getExtensionListByName(url, extensionName)]
 
       item_rev_downloads = {}
-      self.setStatus("Collecting `slicer_revision` and `download` for 'extension_id' / 'item_id' pair")
+      # Collecting `slicer_revision` and `download` for 'extension_id' / 'item_id' pair
       for (idx, (itemid, extensionid)) in enumerate(all_itemids):
-          self.setStatus("Retrieving package info {0}/{1}".format(idx+1, len(all_itemids)))
+          self.setStatus("Retrieving package info {0}/{1} for extension {2}".format(idx+1, len(all_itemids), extensionName))
           querySuccess = False
           remainingRetryAttempts = 10
           for i in xrange(remainingRetryAttempts):
               try:
                   item_rev_downloads[itemid] = [self.getItemById(url, itemid)['download'], self.getExtensionById(url, extensionid)['slicer_revision']]
               except urllib2.URLError as e:
-                  self.setStatus("Retrieving package info {0}/{1} - Query error({2}): {3} - ".format(idx+1, len(all_itemids), e.errno, e.strerror))
+                  self.setStatus("Retrieving package info {0}/{1} for extension {2} - Query error({3}): {4} - ".format(idx+1, len(all_itemids), extensionName, e.errno, e.strerror))
                   time.sleep(3*i) # wait progressively more after each failure
               else:
                   querySuccess = True
@@ -317,7 +443,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
           if self.getCancelRequested():
             break
 
-      self.setStatus("Consolidating `download` by 'slicer_revision'")
+      self.setStatus("Consolidating `download` by 'slicer_revision' for extension {0}".format(extensionName))
       rev_downloads = {}
       for (itemid, downloads_rev) in item_rev_downloads.iteritems():
           downloads = int(downloads_rev[0])
@@ -363,7 +489,10 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
 
       release_downloads_with_pre = collections.OrderedDict() # need to create a new dict to prepend an item
       releases = self.getSlicerReleases().keys()
-      releases_index = releases.index(release_downloads.keys()[0]) - 1
+      if release_downloads.keys():
+        releases_index = releases.index(release_downloads.keys()[0]) - 1
+      else:
+        releases_index = - 1
       if releases_index>=0 and releases_index<len(releases):
         release_for_pre_release = releases[releases_index]
         release_downloads_with_pre[release_for_pre_release + '-nightly'] = pre_release_downloads
