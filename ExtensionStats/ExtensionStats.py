@@ -126,15 +126,21 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
       slicer.app.processEvents()
       return
     
-    # Initialize table contents: clear and add release column
-    self.statsTableNode.RemoveAllColumns()    
-    releaseNameColumn = vtk.vtkStringArray()
-    releaseNameColumn.SetName("Release")
-    releases = self.logic.getSlicerReleases()
+    # Get sorted list of releases and nightly versions
+    releasesRevisions = self.logic.getSlicerReleases()
     # sort releases based on SVN revision    
-    releases = collections.OrderedDict(sorted(releases.items(), key=lambda t: t[1]))
-    for release in releases.keys():
-      releaseNameColumn.InsertNextValue(release)
+    releasesRevisionsSorted = sorted(releasesRevisions.items(), key=lambda t: t[1])
+    releases = ["pre-releases-nightly"]
+    for releaseRevision in releasesRevisionsSorted:
+      releases.append(releaseRevision[0])
+      releases.append(releaseRevision[0]+"-nightly")
+
+    # Initialize table contents: clear and add release column
+    self.statsTableNode.RemoveAllColumns()
+    self.statsTableNode.AddColumn().SetName("Extension")
+    for release in releases:
+      self.statsTableNode.AddColumn().SetName(release)
+    self.statsTableNode.Modified()
     
     self.applyButton.setText("Cancel")
     self.queryInProgress = True
@@ -148,20 +154,15 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
    
       if self.logic.getCancelRequested():
         break
-   
-      # Add row header only if there is also some numbers to add
-      if self.statsTableNode.GetNumberOfColumns()==0:
-        self.statsTableNode.AddColumn(releaseNameColumn)
-      
+         
       # Add results to table
-      extensionColumn = vtk.vtkStringArray()
-      extensionColumn.SetName(extensionName)
-      for release in releases.keys():
+      newRowIndex = self.statsTableNode.AddEmptyRow()
+      self.statsTableNode.SetCellText(newRowIndex,0, extensionName)
+      for (idx, release) in enumerate(releases):
         if release in release_downloads.keys():
-          extensionColumn.InsertNextValue(str(release_downloads[release]))
+          self.statsTableNode.SetCellText(newRowIndex,idx+1, str(release_downloads[release]))
         else:
-          extensionColumn.InsertNextValue("0")
-      self.statsTableNode.AddColumn(extensionColumn)
+          self.statsTableNode.SetCellText(newRowIndex,idx+1, "0")
       
     self.queryInProgress = False
     self.logic.setCancelRequested(False)
@@ -279,7 +280,6 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
     'PkModeling',
     'PortPlacement',
     'Q3DC',
-    'README',
     'Reporting',
     'ResampleDTIlogEuclidean',
     'ResectionPlanner',
@@ -308,7 +308,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
     'UKFTractography',
     'VolumeClip',
     'WindowLevelEffect',
-    'XNATSlicer',
+    'XNATSlicer'
     ]
     return extension_names
 
