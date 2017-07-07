@@ -43,10 +43,10 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
-    
+
     self.logic = ExtensionStatsLogic()
     self.logic.setStatusCallback(self.setStatusText)
-    
+
     self.queryInProgress = False
 
     # Instantiate and connect widgets ...
@@ -61,7 +61,7 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
     extensionNameBox = qt.QHBoxLayout()
-    
+
     self.extensionNameEdit = qt.QLineEdit()
     self.extensionNameEdit.setText('')
     extensionNameBox.addWidget(self.extensionNameEdit)
@@ -71,16 +71,16 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
     self.extensionNameAllButton.toolTip = "Get statistics for all extensions"
     extensionNameBox.addWidget(self.extensionNameAllButton)
     self.populateExtensionNameEdit()
-    
-    parametersFormLayout.addRow("Extension name: ", extensionNameBox)    
-    
+
+    parametersFormLayout.addRow("Extension name: ", extensionNameBox)
+
     self.applyButton = qt.QPushButton("Get download statistics")
     self.applyButton.toolTip = "Get download statistics"
     parametersFormLayout.addRow(self.applyButton)
 
     self.statusText = qt.QLabel()
     parametersFormLayout.addRow("Status:", self.statusText)
-    
+
     # Stats table
     self.statsTableWidget = slicer.qMRMLTableView()
     self.statsTableWidget.setMRMLScene(slicer.mrmlScene)
@@ -89,19 +89,19 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
     policy.setVerticalStretch(1)
     policy.setHorizontalPolicy(qt.QSizePolicy.Expanding)
     policy.setVerticalPolicy(qt.QSizePolicy.Expanding)
-    self.statsTableWidget.setSizePolicy(policy)    
-    
+    self.statsTableWidget.setSizePolicy(policy)
+
     self.statsTableNode = slicer.vtkMRMLTableNode()
     self.statsTableNode.SetName('ExtensionStats')
     self.statsTableNode.SetUseColumnNameAsColumnHeader(True)
-    self.statsTableNode.SetUseFirstColumnAsRowHeader(True)    
+    self.statsTableNode.SetUseFirstColumnAsRowHeader(True)
     slicer.mrmlScene.AddNode(self.statsTableNode)
     self.statsTableWidget.setMRMLTableNode(self.statsTableNode)
 
     # Copy to clipboard button
     self.copyToClipboardButton = qt.QPushButton("Copy table to clipboard")
-    parametersFormLayout.addRow('', self.copyToClipboardButton)    
-    
+    parametersFormLayout.addRow('', self.copyToClipboardButton)
+
     # connections
     self.extensionNameAllButton.connect('clicked()', self.populateExtensionNameEdit)
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
@@ -116,19 +116,19 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
   def populateExtensionNameEdit(self):
     extensionNames = ",".join(self.logic.getExtensionNames())
     self.extensionNameEdit.setText(extensionNames)
-    
+
   def onApplyButton(self):
-  
+
     if self.queryInProgress:
       self.logic.setCancelRequested(True)
       self.applyButton.setText("Cancelling...")
       self.applyButton.enabled = False
       slicer.app.processEvents()
       return
-    
+
     # Get sorted list of releases and nightly versions
     releasesRevisions = self.logic.getSlicerReleases()
-    # sort releases based on SVN revision    
+    # sort releases based on SVN revision
     releasesRevisionsSorted = sorted(releasesRevisions.items(), key=lambda t: t[1])
     releases = ["pre-releases-nightly"]
     for releaseRevision in releasesRevisionsSorted:
@@ -141,20 +141,20 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
     for release in releases:
       self.statsTableNode.AddColumn().SetName(release)
     self.statsTableNode.Modified()
-    
+
     self.applyButton.setText("Cancel")
     self.queryInProgress = True
     slicer.app.processEvents()
 
     for extensionName in self.extensionNameEdit.text.split(','):
-      
+
       extensionName.strip() # trim whitespace
-      
+
       release_downloads = self.logic.getExtensionDownloadStats(self.logic.getDefaultMidasJsonQueryUrl(), extensionName)
-   
+
       if self.logic.getCancelRequested():
         break
-         
+
       # Add results to table
       newRowIndex = self.statsTableNode.AddEmptyRow()
       self.statsTableNode.SetCellText(newRowIndex,0, extensionName)
@@ -163,7 +163,7 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
           self.statsTableNode.SetCellText(newRowIndex,idx+1, str(release_downloads[release]))
         else:
           self.statsTableNode.SetCellText(newRowIndex,idx+1, "0")
-      
+
     self.queryInProgress = False
     self.logic.setCancelRequested(False)
     self.applyButton.setText("Get download statistics")
@@ -172,7 +172,7 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
   def copyTableToClipboard(self):
     table = self.statsTableNode.GetTable()
     tableText = ''
-    
+
     header = []
     for columnIndex in range(table.GetNumberOfColumns()):
       header.append(table.GetColumn(columnIndex).GetName())
@@ -188,7 +188,7 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
 
   def setStatusText(self, text):
     self.statusText.text = text
-    
+
 #
 # ExtensionStatsLogic
 #
@@ -207,7 +207,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
     ScriptedLoadableModuleLogic.__init__(self)
     self.statusCallback = None
     self.cancelRequested = False
-  
+
   def getDefaultMidasJsonQueryUrl(self):
    return "http://slicer.kitware.com/midas3/api/json"
 
@@ -331,17 +331,17 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
 
   def setCancelRequested(self, cancelRequested):
     self.cancelRequested = cancelRequested
-    
+
   def getCancelRequested(self):
     slicer.app.processEvents() # get a chance of button presses to be processed
     return self.cancelRequested
-    
+
   def setStatus(self, statusText):
     logging.info(statusText)
     if self.statusCallback:
       self.statusCallback(statusText)
       slicer.app.processEvents()
-  
+
   #---------------------------------------------------------------------------
   def getSlicerReleases(self):
       """Return dictionary of Slicer release and associated Slicer revision.
@@ -584,3 +584,72 @@ class ExtensionStatsTest(ScriptedLoadableModuleTest):
     logic = ExtensionStatsLogic()
     self.assertTrue( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')
+
+def main(argv):
+  import argparse, json, csv
+
+  parser = argparse.ArgumentParser(description="Slicer Extensions download statistics query tool")
+  parser.add_argument('-e', '--extensions', dest="extensionsList", required=False, help="Extension(s) to be queried. If more than one, separate by comma. If not specified, all extensions will be queried.")
+  parser.add_argument('-r', '--releases', dest="releasesList", required=False, help="Release(s) to be queried. If more than one, separate by comma. If not specified, all releases will be queried.")
+  parser.add_argument('-j', '--output-json', dest="jsonName", required=False, help="Name of the output JSON file to store the results.")
+  parser.add_argument('-c', '--output-csv', dest="csvName", required=False, help="Name of the output JSON file to store the results.")
+
+  args = parser.parse_args(argv)
+
+  logic = ExtensionStatsLogic()
+
+  if args.extensionsList is None:
+    extensionsList = logic.getExtensionNames()
+  else:
+    extensionsList = args.extensionsList.split(',')
+
+  if args.releasesList is None:
+    releasesRevisions = logic.getSlicerReleases()
+  else:
+    releasesRevisions = {}
+    allReleasesRevisions = logic.getSlicerReleases()
+    for release in args.releasesList:
+      if release in allReleasesRevisions.keys():
+        releasesRevisions[release] = allReleasesRevisions[release]
+  releasesRevisions = sorted(releasesRevisions.items(), key=lambda t: t[1])
+
+  releases = ["pre-releases-nightly"]
+  for releaseRevision in releasesRevisions:
+    releases.append(releaseRevision[0])
+    releases.append(releaseRevision[0]+"-nightly")
+
+  csvWriter = None
+  if args.csvName:
+    csvFile = open(args.csvName, 'wb')
+    csvWriter = csv.writer(csvFile, delimiter=',')
+    csvWriter.writerow(['Extension name']+releases)
+
+  allStats = {}
+
+  for extensionName in extensionsList:
+
+    extensionName.strip() # trim whitespace
+
+    release_downloads = logic.getExtensionDownloadStats(logic.getDefaultMidasJsonQueryUrl(), extensionName)
+
+    allStats[extensionName] = release_downloads
+
+    if csvWriter:
+      extensionStats = [extensionName]
+      for release in releases:
+        if release in release_downloads:
+          extensionStats = extensionStats+[release_downloads[release]]
+        else:
+          extensionStats = extensionStats+['NA']
+      csvWriter.writerow(extensionStats)
+
+  if args.jsonName:
+    jsonStats = json.dumps(allStats, indent=2)
+    with open(args.jsonName, 'w') as jsonFile:
+      jsonFile.write(jsonStats)
+
+  sys.exit(0)
+
+
+if __name__ == "__main__":
+  main(sys.argv[1:])
