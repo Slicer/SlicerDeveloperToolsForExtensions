@@ -446,7 +446,6 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
       item_rev_downloads = {}
       # Collecting `slicer_revision` and `download` for 'extension_id' / 'item_id' pair
       for (idx, (itemid, extensionid)) in enumerate(all_itemids):
-          self.setStatus("Retrieving package info {0}/{1} for extension {2}".format(idx+1, len(all_itemids), extensionName))
           querySuccess = False
           remainingRetryAttempts = 10
           for i in xrange(remainingRetryAttempts):
@@ -458,6 +457,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
               else:
                   querySuccess = True
                   break
+          self.setStatus("Retrieving package info {0}/{1} for extension {2}: rev {3} downloaded {4} times".format(idx+1, len(all_itemids), extensionName, item_rev_downloads[itemid][1], item_rev_downloads[itemid][0]))
           if self.getCancelRequested():
             break
 
