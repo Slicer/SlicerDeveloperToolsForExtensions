@@ -590,7 +590,6 @@ def main(argv):
 
   parser = argparse.ArgumentParser(description="Slicer Extensions download statistics query tool")
   parser.add_argument('-e', '--extensions', dest="extensionsList", required=False, help="Extension(s) to be queried. If more than one, separate by comma. If not specified, all extensions will be queried.")
-  parser.add_argument('-r', '--releases', dest="releasesList", required=False, help="Release(s) to be queried. If more than one, separate by comma. If not specified, all releases will be queried.")
   parser.add_argument('-j', '--output-json', dest="jsonName", required=False, help="Name of the output JSON file to store the results.")
   parser.add_argument('-c', '--output-csv', dest="csvName", required=False, help="Name of the output JSON file to store the results.")
 
@@ -602,17 +601,7 @@ def main(argv):
     extensionsList = logic.getExtensionNames()
   else:
     extensionsList = args.extensionsList.split(',')
-
-  if args.releasesList is None:
-    releasesRevisions = logic.getSlicerReleasesRevisions()
-  else:
-    releasesRevisions = {}
-    allReleasesRevisions = logic.getSlicerReleasesRevisions()
-    for release in args.releasesList:
-      if release in allReleasesRevisions.keys():
-        releasesRevisions[release] = allReleasesRevisions[release]
-  releasesRevisions = sorted(releasesRevisions.items(), key=lambda t: t[1])
-
+  
   releases = logic.getSlicerReleaseNames()
 
   csvWriter = None
