@@ -336,7 +336,9 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
       '4.4.0': '23774',
       '4.5.0-1': '24735',
       '4.6.0': '25441',
-      '4.6.2': '25516'
+      '4.6.2': '25516',
+      '4.8.0': '26489',
+      '4.8.1': '26813'
     }
 
     # sort releases based on SVN revision
