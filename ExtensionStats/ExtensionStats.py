@@ -338,7 +338,8 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
       '4.6.0': '25441',
       '4.6.2': '25516',
       '4.8.0': '26489',
-      '4.8.1': '26813'
+      '4.8.1': '26813',
+      '4.9.0': '26493'
     }
 
     # sort releases based on SVN revision
@@ -499,7 +500,9 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
                   querySuccess = True
                   last_rev_download = item_rev_downloads[itemid]
                   break
-          self.setStatus("Retrieving package info {0}/{1} for extension {2}: rev {3} downloaded {4} times".format(idx+1, len(all_itemids), extensionName, item_rev_downloads[itemid][1], item_rev_downloads[itemid][0]))
+          self.setStatus("Retrieving package info {0}/{1} for extension {2}: rev {3} downloaded {4} times (midas itemid: {5})".
+                            format(idx+1, len(all_itemids), extensionName, item_rev_downloads[itemid][1], item_rev_downloads[itemid][0], itemid))
+
           if self.getCancelRequested():
             break
 
