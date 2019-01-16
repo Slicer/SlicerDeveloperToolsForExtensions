@@ -244,16 +244,17 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
         'ErodeDilateLabel',
         'exStone',
         'FacetedVisualizer',
-        'FastGrowCutEffect',
         'FiberViewerLight',
         'FilmDosimetryAnalysis',
         'GelDosimetryAnalysis',
+        'GeodesicSlicer',
         'GraphCutSegment',
         'GyroGuide',
         'IASEM',
         'iGyne',
         'ImageMaker',
         'IntensitySegmenter',
+        'lapdMouseBrowser',
         'LAScarSegmenter',
         'LASegmenter',
         'LesionSpotlight',
@@ -381,6 +382,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
       '4.8.0': '26489',
       '4.8.1': '26813',
       '4.10.0': '27510',
+      '4.10.1': '27931',
       '4.11.0': '27529'
     }
 
