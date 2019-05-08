@@ -1,15 +1,23 @@
-import os
-import unittest
-from __main__ import vtk, qt, ctk, slicer
+from __future__ import print_function
+
+import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
-import logging
 
 import collections
 import json
-import urllib
-import urllib2
+import logging
 import sys
 import time
+
+try:
+  from urllib.request import urlopen
+  from urllib.parse import urlencode
+  from urllib.error import URLError
+except ImportError:
+  from urllib2 import urlopen
+  from urllib import urlencode
+  from urllib2 import URLError
+
 #
 # ExtensionStats
 #
@@ -471,9 +479,9 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
 
   #---------------------------------------------------------------------------
   def _call_midas_url(self, url, data):
-      url_values = urllib.urlencode(data)
+      url_values = urlencode(data)
       full_url = url + '?' + url_values
-      response = urllib2.urlopen(full_url)
+      response = urlopen(full_url)
       response_read = response.read()
       response_dict = json.loads(response_read)
       response_data = response_dict['data']
@@ -537,10 +545,10 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
 
           querySuccess = False
           remainingRetryAttempts = 10
-          for i in xrange(remainingRetryAttempts):
+          for i in range(remainingRetryAttempts):
               try:
                   item_rev_downloads[itemid] = [self.getItemById(url, itemid)['download'], self.getExtensionById(url, extensionid)['slicer_revision']]
-              except urllib2.URLError as e:
+              except URLError as e:
                   self.setStatus("Retrieving package info {0}/{1} for extension {2} - Query error({3}): {4} - ".format(idx+1, len(all_itemids), extensionName, e.errno, e.strerror))
                   time.sleep(3*i) # wait progressively more after each failure
               else:
@@ -555,7 +563,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
 
       self.setStatus("Consolidating `download` by 'slicer_revision' for extension {0}".format(extensionName))
       rev_downloads = {}
-      for (itemid, downloads_rev) in item_rev_downloads.iteritems():
+      for (itemid, downloads_rev) in item_rev_downloads.items():
           downloads = int(downloads_rev[0])
           rev = downloads_rev[1]
           if downloads == 0:
@@ -585,7 +593,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
           release_downloads[release] = 0
 
       # Accumulate download counts
-      for (revision, downloads) in extension_slicer_revision_downloads.iteritems():
+      for (revision, downloads) in extension_slicer_revision_downloads.items():
           release = self.getSlicerReleaseName(revision)
           release_downloads[release] += downloads
 

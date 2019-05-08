@@ -2,6 +2,10 @@ import os
 from __main__ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 import logging
+import sys
+
+if sys.version_info[0] == 3:
+  basestring = str
 
 #
 # DeveloperToolsForExtensions
