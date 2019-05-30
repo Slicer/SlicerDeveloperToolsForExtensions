@@ -339,6 +339,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
         'SlicerITKUltrasound',
         'SlicerJupyter',
         'SlicerLayoutButtons',
+        'SlicerMorphExtension',
         'SlicerOpenCV',
         'SlicerOpenIGTLink',
         'SlicerPathology',
@@ -394,6 +395,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
       '4.8.1': '26813',
       '4.10.0': '27510',
       '4.10.1': '27931',
+      '4.10.2': '28257',
       '4.11.0': '27529'
     }
 
