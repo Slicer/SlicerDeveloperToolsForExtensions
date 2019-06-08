@@ -126,8 +126,8 @@ class DeveloperToolsForExtensionsWidget(ScriptedLoadableModuleWidget):
             self.logic.addModule(fileName,permanent)
             slicer.util.delayDisplay("Module "+fileName+" loaded", self.timeout)
         except Exception as e:
-            logging.critical(e.message)
-            slicer.util.errorDisplay(e.message, self.timeout)
+            logging.critical(e)
+            slicer.util.errorDisplay(e, self.timeout)
 
     def onExtensionSelect(self):
         if not self.extensionFileDialog:
@@ -146,7 +146,7 @@ class DeveloperToolsForExtensionsWidget(ScriptedLoadableModuleWidget):
             if value == qt.QMessageBox.Ok:
                 slicer.util.restart()
         except Exception as e:
-            slicer.util.errorDisplay(e.message, self.timeout)
+            slicer.util.errorDisplay(e, self.timeout)
 #
 # DeveloperToolsForExtensionsLogic
 #
@@ -323,7 +323,7 @@ class DeveloperToolsForExtensionsTest(ScriptedLoadableModuleTest):
             with self.assertRaises(Exception) as cm:
               logic.PlatformCheck(myAbsoluteFileName)
             e = cm.exception
-            self.assertEqual(e.message, "os: "+myCurrentOS+"(Slicer) "+testOS+"(extension)")
+            self.assertEqual(str(e), "os: "+myCurrentOS+"(Slicer) "+testOS+"(extension)")
         # Check that False is returned for wrong revision number
         badRev = "xxxxx"
         myFileName = "-".join([badRev, myCurrentOS, myCurrentArch,
@@ -333,7 +333,7 @@ class DeveloperToolsForExtensionsTest(ScriptedLoadableModuleTest):
         with self.assertRaises(Exception) as cm:
           logic.PlatformCheck(myAbsoluteFileName)
         e = cm.exception
-        self.assertEqual(e.message, "repositoryRevision: "+myCurrentRev+"(Slicer) "+badRev+"(extension)")
+        self.assertEqual(str(e), "repositoryRevision: "+myCurrentRev+"(Slicer) "+badRev+"(extension)")
         # Check that False is returned for wrong architecture detected
         badArchitecture = "badArch"
         myFileName = "-".join([myCurrentRev, myCurrentOS, badArchitecture,
@@ -343,7 +343,7 @@ class DeveloperToolsForExtensionsTest(ScriptedLoadableModuleTest):
         with self.assertRaises(Exception) as cm:
           logic.PlatformCheck(myAbsoluteFileName)
         e = cm.exception
-        self.assertEqual(e.message, "arch: "+myCurrentArch+"(Slicer) "+badArchitecture+"(extension)")
+        self.assertEqual(str(e), "arch: "+myCurrentArch+"(Slicer) "+badArchitecture+"(extension)")
         self.delayDisplay(testName+': Test passed!')
 
     def test_CheckFileExistsCaseSensitive1(self):
