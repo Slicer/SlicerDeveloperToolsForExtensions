@@ -339,7 +339,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
         'SlicerITKUltrasound',
         'SlicerJupyter',
         'SlicerLayoutButtons',
-        'SlicerMorphExtension',
+        'SlicerMorph',
         'SlicerOpenCV',
         'SlicerOpenIGTLink',
         'SlicerPathology',
@@ -375,6 +375,8 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
 
     # The list of revision for each release is reported here:
     # http://wiki.slicer.org/slicerWiki/index.php/Release_Details
+    # Only stable releases must be listed here (preview releases
+    # will be listed as post-SomeStableRelease)
     releases_revisions = {
       '4.0.0': '18777',
       '4.0.1': '19033',
@@ -396,7 +398,6 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
       '4.10.0': '27510',
       '4.10.1': '27931',
       '4.10.2': '28257',
-      '4.11.0': '27529'
     }
 
     # sort releases based on SVN revision
@@ -448,7 +449,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
     releases = [self.legacyReleaseName]
     for releaseRevision in releasesRevisions:
       releases.append(releaseRevision[0])
-      releases.append(releaseRevision[0]+"-nightly")
+      releases.append('post-'+releaseRevision[0])
     releases.append(self.unknownReleaseName)
     return releases
 
@@ -456,7 +457,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
   def getSlicerReleaseName(self, revision):
       """Return Slicer release name that corresponds to a Slicer revision.
       Downloads associated with nightly build happening between release A and B are
-      associated with A-nightly "release".
+      associated with post-A "release".
       """
 
       # Get sorted list of releases and nightly versions
@@ -475,7 +476,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
               # Exact match to a release
               release = releaseRevision[0]
               break
-          release = releaseRevision[0] + "-nightly"
+          release = 'post-'+releaseRevision[0]
 
       return release
 
@@ -553,6 +554,9 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
               except URLError as e:
                   self.setStatus("Retrieving package info {0}/{1} for extension {2} - Query error({3}): {4} - ".format(idx+1, len(all_itemids), extensionName, e.errno, e.strerror))
                   time.sleep(3*i) # wait progressively more after each failure
+              except Exception as err:
+                  self.setStatus("Retrieving package info {0}/{1} for extension {2} - Error: {3} - ".format(idx+1, len(all_itemids), extensionName, str(e)))
+                  time.sleep(3*i) # wait progressively more after each failure
               else:
                   querySuccess = True
                   last_rev_download = item_rev_downloads[itemid]
@@ -585,7 +589,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
       """Given a dictionary of slicer_revision and download counts, this function
       return a dictionary release and download counts.
       Downloads associated with nightly build happening between release A and B are
-      associated with A-nightly "release".
+      associated with post-A "release".
       """
 
       # Create ordered, complete list of all releases and corresponding download counts
