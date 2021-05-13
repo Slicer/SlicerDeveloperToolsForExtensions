@@ -422,6 +422,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
       '4.10.1': '27931',
       '4.10.2': '28257',
       '4.11.20200930': '29402',
+      '4.11.20210226': '29738',
     }
 
     # sort releases based on SVN revision
@@ -692,7 +693,7 @@ def main(argv):
     extensionsList = logic.getExtensionNames()
   else:
     extensionsList = args.extensionsList.split(',')
-  
+
   releases = logic.getSlicerReleaseNames()
 
   csvWriter = None
