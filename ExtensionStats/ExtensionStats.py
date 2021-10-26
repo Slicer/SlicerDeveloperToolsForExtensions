@@ -3,20 +3,12 @@ from __future__ import print_function
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 
-import collections
 import json
 import logging
+import os
+import requests
 import sys
 import time
-
-try:
-  from urllib.request import urlopen
-  from urllib.parse import urlencode
-  from urllib.error import URLError
-except ImportError:
-  from urllib2 import urlopen
-  from urllib import urlencode
-  from urllib2 import URLError
 
 #
 # ExtensionStats
@@ -53,9 +45,6 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
     ScriptedLoadableModuleWidget.setup(self)
 
     self.logic = ExtensionStatsLogic()
-    self.logic.setStatusCallback(self.setStatusText)
-
-    self.queryInProgress = False
 
     # Instantiate and connect widgets ...
 
@@ -71,23 +60,21 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
     extensionNameBox = qt.QHBoxLayout()
 
     self.extensionNameEdit = qt.QLineEdit()
-    self.extensionNameEdit.setText('')
+    # Developers usually have a list of extensions that they are interested in, remember that in application settings
+    self.extensionNameEdit.setText(qt.QSettings().value('ExtensionStats/ExtensionNames', ''))
+    self.extensionNameEdit.toolTip = "Comma-separated list of extension to collect download statistics for. If not specified then all extensions will be listed."
     extensionNameBox.addWidget(self.extensionNameEdit)
 
     self.extensionNameAllButton = qt.QPushButton()
     self.extensionNameAllButton.text = "all"
     self.extensionNameAllButton.toolTip = "Get statistics for all extensions"
     extensionNameBox.addWidget(self.extensionNameAllButton)
-    self.populateExtensionNameEdit()
 
-    parametersFormLayout.addRow("Extension name: ", extensionNameBox)
+    parametersFormLayout.addRow("Extension names: ", extensionNameBox)
 
     self.applyButton = qt.QPushButton("Get download statistics")
     self.applyButton.toolTip = "Get download statistics"
     parametersFormLayout.addRow(self.applyButton)
-
-    self.statusText = qt.QLabel()
-    parametersFormLayout.addRow("Status:", self.statusText)
 
     # Stats table
     self.statsTableWidget = slicer.qMRMLTableView()
@@ -122,52 +109,23 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
     pass
 
   def populateExtensionNameEdit(self):
-    extensionNames = ",".join(self.logic.getExtensionNames())
+    extensionsList = self.logic.getExtensionNames()
+    extensionsList.sort()
+    extensionNames = ",".join(extensionsList)
     self.extensionNameEdit.setText(extensionNames)
 
   def onApplyButton(self):
 
-    if self.queryInProgress:
-      self.logic.setCancelRequested(True)
-      self.applyButton.setText("Cancelling...")
-      self.applyButton.enabled = False
-      slicer.app.processEvents()
-      return
+    # Save last extension list
+    qt.QSettings().setValue('ExtensionStats/ExtensionNames', self.extensionNameEdit.text)
 
-    # Get sorted list of releases and nightly versions
-    releases = self.logic.getSlicerReleaseNames()
+    # Get list of extension names (can be used to limit the query)
+    if self.extensionNameEdit.text.strip():
+      extensionNames = list(map(str.strip, self.extensionNameEdit.text.split(',')))
+    else:
+      extensionNames = None
 
-    # Initialize table contents: clear and add release column
-    self.statsTableNode.RemoveAllColumns()
-    self.statsTableNode.AddColumn().SetName("Extension")
-    for release in releases:
-      self.statsTableNode.AddColumn().SetName(release)
-    self.statsTableNode.Modified()
-
-    self.applyButton.setText("Cancel")
-    self.queryInProgress = True
-    slicer.app.processEvents()
-
-    for extensionName in self.extensionNameEdit.text.split(','):
-
-      release_downloads = self.logic.getExtensionDownloadStats(extensionName)
-
-      if self.logic.getCancelRequested():
-        break
-
-      # Add results to table
-      newRowIndex = self.statsTableNode.AddEmptyRow()
-      self.statsTableNode.SetCellText(newRowIndex,0, extensionName)
-      for (idx, release) in enumerate(releases):
-        if release in release_downloads.keys():
-          self.statsTableNode.SetCellText(newRowIndex,idx+1, str(release_downloads[release]))
-        else:
-          self.statsTableNode.SetCellText(newRowIndex,idx+1, "0")
-
-    self.queryInProgress = False
-    self.logic.setCancelRequested(False)
-    self.applyButton.setText("Get download statistics")
-    self.applyButton.enabled = True
+    self.logic.getExtensionDownloadStatsAsTable(self.statsTableNode, extensionNames)
 
   def copyTableToClipboard(self):
     table = self.statsTableNode.GetTable()
@@ -186,9 +144,6 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
         tableText += table.GetColumn(columnIndex).GetValue(rowIndex)
     qt.QApplication.clipboard().setText(tableText)
 
-  def setStatusText(self, text):
-    self.statusText.text = text
-
 #
 # ExtensionStatsLogic
 #
@@ -205,196 +160,6 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
 
   def __init__(self):
     ScriptedLoadableModuleLogic.__init__(self)
-    self.statusCallback = None
-    self.cancelRequested = False
-
-    # Sampling ratio of info packages. Useful for testing or getting approximations
-    # of download counts with reduced waiting time.
-    # Value of 1.0 means all packages are queried.
-    # Smaller value results in less accurate information but faster results.
-    self.package_sampling_ratio = 1.0
-
-    # List of extension names obtained doing:
-    #  $ git clone github.com/Slicer/ExtensionsIndex SlicerExtensionsIndex
-    #  $ cd SlicerExtensionsIndex
-    #  $ for name in $(ls -1 | cut -d"." -f1); do echo "'$name',"; done
-    #
-    self.extension_names = [
-      'ABC',
-      'ABLTemporalBoneSegmentation',
-      'AnglePlanesExtension',
-      'AnomalousFiltersExtension',
-      'ArduinoController',
-      'Auto3dgm',
-      'Autoscroll',
-      'BoneTextureExtension',
-      'BoneThicknessMapping',
-      'BrainVolumeRefinement',
-      'BreastImplantAnalyzer',
-      'Cardiac_MRI_Toolkit',
-      'CarreraSlice',
-      'CBC_3D_I2MConversion',
-      'ChangeTracker',
-      'Chest_Imaging_Platform',
-      'CleverSeg',
-      'CMFreg',
-      'CornerAnnotation',
-      'CurveMaker',
-      'DatabaseInteractor',
-      'DCMQI',
-      'DebuggingTools',
-      'DeepInfer',
-      'DeveloperToolsForExtensions',
-      'DiceComputation',
-      'DICOMwebBrowser',
-      'DiffusionQC',
-      'DRRGenerator',
-      'DSCMRIAnalysis',
-      'DTIAtlasBuilder',
-      'DTIAtlasFiberAnalyzer',
-      'DTIPrep',
-      'DTIProcess',
-      'DTI-Reg',
-      'EasyClip',
-      'Eigen3',
-      'ErodeDilateLabel',
-      'exStone',
-      'FacetedVisualizer',
-      'FiberViewerLight',
-      'FiducialsToModelDistance',
-      'FilmDosimetryAnalysis',
-      'GelDosimetryAnalysis',
-      'GeodesicSlicer',
-      'GraphCutSegment',
-      'GyroGuide',
-      'IASEM',
-      'iGyne',
-      'ImageCompare',
-      'ImageMaker',
-      'IntensitySegmenter',
-      'KidneyStoneCalculator',
-      'lapdMouseBrowser',
-      'LAScarSegmenter',
-      'LASegmenter',
-      'LesionSimulator',
-      'LesionSpotlight',
-      'LightWeightRobotIGT',
-      'LongitudinalPETCT',
-      'LungCTAnalyzer',
-      'MABMIS',
-      'MarginCalculator',
-      'MarkupsToModel',
-      'MatlabBridge',
-      'MeshStatisticsExtension',
-      'MeshToLabelMap',
-      'MFSDA',
-      'ModelClip',
-      'ModelCropper',
-      'ModelToModelDistance',
-      'mpReview',
-      'MultiLevelRegistration',
-      'NeedleFinder',
-      'NvidiaAIAssistedAnnotation',
-      'OpenCAD',
-      'OpenCVExample',
-      'OpenDose3D',
-      'OrthodonticAnalysis',
-      'OsteotomyPlanner',
-      'PathReconstruction',
-      'PBNRR',
-      'PedicleScrewSimulator',
-      'PercutaneousApproachAnalysis',
-      'PerkTutor',
-      'PETCPhantom',
-      'PETDICOMExtension',
-      'PET-IndiC',
-      'PETLiverUptakeMeasurement',
-      'PetSpectAnalysis',
-      'PETTumorSegmentation',
-      'PickAndPaintExtension',
-      'PkModeling',
-      'PortPlacement',
-      'Q3DC',
-      'QuantitativeReporting',
-      'RawImageGuess',
-      'RegistrationQA',
-      'ResampleDTIlogEuclidean',
-      'ResectionPlanner',
-      'ROBEXBrainExtraction',
-      'RSSExtension',
-      'Sandbox',
-      'ScatteredTransform',
-      'Scoliosis',
-      'SegmentationAidedRegistration',
-      'SegmentationWizard',
-      'SegmentEditorExtraEffects',
-      'SegmentMesher',
-      'SegmentRegistration',
-      'SequenceRegistration',
-      'ShapePopulationViewer',
-      'ShapeQuantifier',
-      'ShapeRegressionExtension',
-      'ShapeVariationAnalyzer',
-      'SkeletalRepresentation',
-      'SkullStripper',
-      'Slicer-AirwaySegmentation',
-      'SlicerAstro',
-      'SlicerCaseIterator',
-      'SlicerCervicalSpine',
-      'SlicerCMF',
-      'SlicerCochlea',
-      'SlicerDcm2nii',
-      'SlicerDevelopmentToolbox',
-      'SlicerDMRI',
-      'SlicerElastix',
-      'SlicerFab',
-      'SlicerFreeSurfer',
-      'SlicerHeart',
-      'SlicerIGSIO',
-      'SlicerIGT',
-      'SlicerIMSTK',
-      'SlicerITKUltrasound',
-      'SlicerJupyter',
-      'SlicerLayoutButtons',
-      'SlicerLookingGlass',
-      'SlicerMorphExtension',
-      'SlicerOpenAnatomy',
-      'SlicerOpenCV',
-      'SlicerOpenIGTLink',
-      'SlicerPathology',
-      'slicerPRISMRendering',
-      'SlicerProstate',
-      'SlicerProstateAblation',
-      'SlicerRadiomics',
-      'SlicerRT',
-      'SlicerToKiwiExporter',
-      'SlicerVASST',
-      'SlicerVideoCameras',
-      'SlicerVirtualReality',
-      'SlicerVMTK',
-      'Slicer-Wasp',
-      'SlicerWMA',
-      'SliceTracker',
-      'SNRMeasurement',
-      'SoundControl',
-      'SPHARM-PDM',
-      'SupervisedSegmentationToolbox',
-      'SurfaceWrapSolidify',
-      'SwissSkullStripper',
-      'T1_ECVMapping',
-      'T1Mapping',
-      'T2mapping',
-      'TCIABrowser',
-      'TOMAAT',
-      'TorchIO',
-      'UKFTractography',
-      'VASSTAlgorithms',
-      'VirtualFractureReconstruction',
-      'VolumeClip',
-      'WindowLevelEffect',
-      'XNATSlicer',
-      'ZFrameRegistration',
-    ]
 
     # The list of revision for each release is reported here:
     # http://wiki.slicer.org/slicerWiki/index.php/Release_Details
@@ -431,33 +196,15 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
     self.legacyReleaseName = "legacy"
     self.unknownReleaseName = "unknown"
 
-  #---------------------------------------------------------------------------
-  def getDefaultMidasJsonQueryUrl(self):
-   return "http://slicer.kitware.com/midas3/api/json"
+    self.baselineExtensionDownloadStatsFile = os.path.dirname(slicer.modules.extensionstats.path) + "/Resources/ExtensionsDownloadStats-20210521.csv"    
+
+    self.downloadstatsUrl = "https://slicer-packages.kitware.com/api/v1/app/5f4474d0e1d8c75dfc705482/downloadstats"
+    self.downloadstats = None
 
   #---------------------------------------------------------------------------
   def getExtensionNames(self):
-    return self.extension_names
-
-  #---------------------------------------------------------------------------
-  def setStatusCallback(self, callbackMethod):
-    self.statusCallback = callbackMethod
-
-  #---------------------------------------------------------------------------
-  def setCancelRequested(self, cancelRequested):
-    self.cancelRequested = cancelRequested
-
-  #---------------------------------------------------------------------------
-  def getCancelRequested(self):
-    slicer.app.processEvents() # get a chance of button presses to be processed
-    return self.cancelRequested
-
-  #---------------------------------------------------------------------------
-  def setStatus(self, statusText):
-    # logging.info(statusText)  # commented out, because logging to console would slow down download count querying by about 20%
-    if self.statusCallback:
-      self.statusCallback(statusText)
-      slicer.app.processEvents()
+    extension_release_downloads = self.getExtensionDownloadStats()
+    return list(extension_release_downloads.keys())
 
   #---------------------------------------------------------------------------
   def getSlicerReleasesRevisions(self):
@@ -471,11 +218,10 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
     unknown: invalid revision (not integer)
     """
     releasesRevisions = self.getSlicerReleasesRevisions()
-    releases = [self.legacyReleaseName]
+    releases = [self.unknownReleaseName, self.legacyReleaseName]
     for releaseRevision in releasesRevisions:
       releases.append(releaseRevision[0])
       releases.append('post-'+releaseRevision[0])
-    releases.append(self.unknownReleaseName)
     return releases
 
   #---------------------------------------------------------------------------
@@ -506,147 +252,106 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
       return release
 
   #---------------------------------------------------------------------------
-  def _call_midas_url(self, url, data):
-      url_values = urlencode(data)
-      full_url = url + '?' + url_values
-      response = urlopen(full_url)
-      response_read = response.read()
-      response_dict = json.loads(response_read)
-      response_data = response_dict['data']
-      return response_data
-
-  #---------------------------------------------------------------------------
-  def getExtensionListByName(self, url, extensionName, release=None):
-      """By default, return list of all extensions with ``extensionName``.
-      """
-      method = 'midas.slicerpackages.extension.list'
-      codebase = 'Slicer4'
-      data = {'method': method, 'codebase': codebase, 'productname': extensionName}
-      slicer_revision = None
-      if release is not None:
-          releases = self.getSlicerReleasesRevisions()
-          if release in releases:
-              slicer_revision = releases[release]
-      if slicer_revision is not None:
-          data['slicer_revision'] = slicer_revision
-      return self._call_midas_url(url, data)
-
-  #---------------------------------------------------------------------------
-  def getExtensionById(self, url, extensionId):
-      """Return property associated with extension identified by ``extensionId``.
-      """
-      method = 'midas.slicerpackages.extension.list'
-      codebase = 'Slicer4'
-      data = {'method': method, 'codebase': codebase, 'extension_id': extensionId}
-      extensions = self._call_midas_url(url, data)
-      if len(extensions) > 0:
-          return extensions[0]
-      else:
-          return []
-
-  #---------------------------------------------------------------------------
-  def getItemById(self, url, itemId):
-      """Return property associated with item identified by ``itemId``.
-      """
-      method = 'midas.item.get'
-      data = {'method': method, 'id': itemId}
-      return self._call_midas_url(url, data)
-
-  #---------------------------------------------------------------------------
-  def getExtensionSlicerRevisionAndDownloads(self, url, extensionName):
-      """Return a dictionary of slicer revision and download counts for
-      the given ``extensionName``.
-      """
-      self.setStatus("Collecting list of packages for extension '{0}'".format(extensionName))
-      extension_list =  self.getExtensionListByName(url, extensionName)
-      all_itemids = [(ext['item_id'], ext['extension_id'], ext['slicer_revision']) for ext in extension_list]
-
-      item_rev_downloads = {}
-      sampling_step = int(1.0/self.package_sampling_ratio)
-      # Collecting `slicer_revision` and `download` for 'extension_id' / 'item_id' pair
-      for (idx, (itemid, extensionid, slicerrevision)) in enumerate(all_itemids):
-
-          # If statistical sampling is used and we are not at a sampling step then just
-          # reuse the previous sample value.
-          if self.package_sampling_ratio < 1.0 and (idx % sampling_step != 0):
-            item_rev_downloads[itemid] = last_rev_download
-            continue
-
-          querySuccess = False
-          remainingRetryAttempts = 10
-          for i in range(remainingRetryAttempts):
-              try:
-                  item_rev_downloads[itemid] = [self.getItemById(url, itemid)['download'], slicerrevision]
-              except URLError as e:
-                  self.setStatus("Retrieving package info {0}/{1} for extension {2} - Query error({3}): {4} - ".format(idx+1, len(all_itemids), extensionName, e.errno, e.strerror))
-                  time.sleep(3*i) # wait progressively more after each failure
-              except Exception as err:
-                  self.setStatus("Retrieving package info {0}/{1} for extension {2} - Error: {3} - ".format(idx+1, len(all_itemids), extensionName, str(e)))
-                  time.sleep(3*i) # wait progressively more after each failure
-              else:
-                  querySuccess = True
-                  last_rev_download = item_rev_downloads[itemid]
-                  break
-          self.setStatus("Retrieving package info {0}/{1} for extension {2}: rev {3} downloaded {4} times (midas itemid: {5})".
-                            format(idx+1, len(all_itemids), extensionName, item_rev_downloads[itemid][1], item_rev_downloads[itemid][0], itemid))
-
-          if self.getCancelRequested():
-            break
-
-      self.setStatus("Consolidating `download` by 'slicer_revision' for extension {0}".format(extensionName))
-      rev_downloads = {}
-      for (itemid, downloads_rev) in item_rev_downloads.items():
-          downloads = int(downloads_rev[0])
-          rev = downloads_rev[1]
-          if downloads == 0:
-              continue
-          if rev not in rev_downloads:
-              rev_downloads[rev] = downloads
-          else:
-              rev_downloads[rev] += downloads
-
-      # Order the items based on revision
-      sorted_rev_downloads = collections.OrderedDict(sorted(rev_downloads.items(), key=lambda t: t[0]))
-
-      return sorted_rev_downloads
-
-  #---------------------------------------------------------------------------
-  def getExtensionDownloadStatsByReleaseName(self, extension_slicer_revision_downloads):
-      """Given a dictionary of slicer_revision and download counts, this function
-      return a dictionary release and download counts.
-      Downloads associated with nightly build happening between release A and B are
-      associated with post-A "release".
+  def getExtensionDownloadStats(self, extensionNames=None):
+      """Return download count for extensions in a map indexed by extensionName and release.
+      :param extensionNames: list containing extension names to consider, of None then statistics will be provided for all.
       """
 
-      # Create ordered, complete list of all releases and corresponding download counts
-      release_downloads = collections.OrderedDict()
-      releases = self.getSlicerReleaseNames()
-      for release in releases:
-          release_downloads[release] = 0
+      extension_release_downloads = {}
 
-      # Accumulate download counts
-      for (revision, downloads) in extension_slicer_revision_downloads.items():
+      # Read baseline extension downloads from CSV file (that are not available in the current server stats
+      # because they were collected using the old Midas server)
+      import csv
+      with open(self.baselineExtensionDownloadStatsFile, 'r') as csvfile:
+          datareader = csv.reader(csvfile)
+          rows = iter(datareader)
+          columns = next(rows)
+          for row in rows:
+              extensionName = row[0]
+              if extensionNames and (extensionName not in extensionNames):
+                  # this extension is not in the requested list of extensions
+                  continue
+              for release, downloadCount in zip(columns[1:], row[1:]):
+                  downloadCount = int(downloadCount)
+                  if downloadCount == 0:
+                      continue
+                  if extensionName not in extension_release_downloads:
+                      extension_release_downloads[extensionName] = {}
+                  if release not in extension_release_downloads[extensionName]:
+                      extension_release_downloads[extensionName][release] = 0
+                  extension_release_downloads[extensionName][release] += downloadCount
+
+      # Get current extension download stats from Extensions Server (Girder server)
+      if self.downloadstats is None:
+        resp = requests.get(self.downloadstatsUrl)
+        self.downloadstats = resp.json()
+      for revision in self.downloadstats:
           release = self.getSlicerReleaseName(revision)
-          release_downloads[release] += downloads
+          if 'extensions' not in self.downloadstats[revision]:
+            # no extensions downloaded for this release
+            continue
+          for extensionName in self.downloadstats[revision]['extensions']:
+              if extensionNames and (extensionName not in extensionNames):
+                  # this extension is not in the requested list of extensions
+                  continue
+              downloadCount = 0
+              try:
+                  downloadCount += self.downloadstats[revision]['extensions'][extensionName]['win']['amd64']
+              except:
+                  pass
+              try:
+                  downloadCount += self.downloadstats[revision]['extensions'][extensionName]['macosx']['amd64']
+              except:
+                  pass
+              try:
+                  downloadCount += self.downloadstats[revision]['extensions'][extensionName]['linux']['amd64']
+              except:
+                  pass
+              if downloadCount == 0:
+                continue
+              if extensionName not in extension_release_downloads:
+                extension_release_downloads[extensionName] = {}
+              if release not in extension_release_downloads[extensionName]:
+                extension_release_downloads[extensionName][release] = 0
+              extension_release_downloads[extensionName][release] += downloadCount
 
-      return release_downloads
+      return extension_release_downloads
 
-  #---------------------------------------------------------------------------
-  def getExtensionDownloadStats(self, extensionName, url = None):
-      """Return download stats associated with ``extensionName``.
-      """
+  def getExtensionDownloadStatsAsTable(self, statsTableNode, extensionNames):
+      
+      # Initialize columns
 
-      if url is None:
-        url = self.getDefaultMidasJsonQueryUrl()
+      extensionNamesColumn = vtk.vtkStringArray()
+      extensionNamesColumn.SetName("Extension")
 
-      extensionName.strip() # trim whitespace
+      releases = self.getSlicerReleaseNames()
+      releaseColumns = {}
+      for release in releases:
+        releaseColumns[release] = vtk.vtkIntArray()
+        releaseColumns[release].SetName(release)
 
-      self.setStatus("Retrieving '{0}' extension download statistics from '{1}' server".format(extensionName, url))
-      rev_downloads = self.getExtensionSlicerRevisionAndDownloads(url, extensionName)
-      self.setStatus("Grouping download statistics by release name")
-      extensionDownloadStatsByRelease = self.getExtensionDownloadStatsByReleaseName(rev_downloads)
-      self.setStatus('Cancelled.' if self.getCancelRequested() else 'Done.')
-      return extensionDownloadStatsByRelease
+      # Fill columns
+
+      extension_release_downloads = self.getExtensionDownloadStats(extensionNames)
+      if not extensionNames:
+        extensionNames = extension_release_downloads.keys()
+
+      for extensionName in extensionNames:
+          if extensionName not in extension_release_downloads:
+            continue
+          extensionNamesColumn.InsertNextValue(extensionName)
+          release_downloads = extension_release_downloads[extensionName]
+          for release in releases:
+              releaseColumns[release].InsertNextValue(release_downloads[release] if (release in release_downloads) else 0)
+
+      # Add columns to table
+      
+      statsTableNode.RemoveAllColumns()
+      statsTableNode.AddColumn(extensionNamesColumn)
+      for release in releases:
+        statsTableNode.AddColumn(releaseColumns[release])
+      statsTableNode.Modified()
+
 
 class ExtensionStatsTest(ScriptedLoadableModuleTest):
   """
@@ -670,10 +375,10 @@ class ExtensionStatsTest(ScriptedLoadableModuleTest):
     self.delayDisplay("Starting the test")
 
     logic = ExtensionStatsLogic()
-    logic.package_sampling_ratio = 0.01 # Query every 100th statistics package
-    release_downloads = logic.getExtensionDownloadStats("SlicerRT")
-    print(repr(release_downloads))
-    self.assertTrue(len(release_downloads)>0)
+    extension_release_downloads = logic.getExtensionDownloadStats("SlicerRT")
+    print(repr(extension_release_downloads))
+    self.assertTrue(len(extension_release_downloads["SlicerRT"]) > 0)
+    self.assertTrue(extension_release_downloads["SlicerRT"]["4.2.0"] >= 146)
 
     self.delayDisplay('Test passed!')
 
@@ -683,7 +388,7 @@ def main(argv):
   parser = argparse.ArgumentParser(description="Slicer Extensions download statistics query tool")
   parser.add_argument('-e', '--extensions', dest="extensionsList", required=False, help="Extension(s) to be queried. If more than one, separate by comma. If not specified, all extensions will be queried.")
   parser.add_argument('-j', '--output-json', dest="jsonName", required=False, help="Name of the output JSON file to store the results.")
-  parser.add_argument('-c', '--output-csv', dest="csvName", required=False, help="Name of the output JSON file to store the results.")
+  parser.add_argument('-s', '--output-csv', dest="csvName", required=False, help="Name of the output JSON file to store the results.")
 
   args = parser.parse_args(argv)
 
@@ -691,38 +396,37 @@ def main(argv):
 
   if args.extensionsList is None:
     extensionsList = logic.getExtensionNames()
+    extensionsList.sort()
   else:
     extensionsList = args.extensionsList.split(',')
 
-  releases = logic.getSlicerReleaseNames()
-
-  csvWriter = None
-  if args.csvName:
-    csvFile = open(args.csvName, 'wb')
-    csvWriter = csv.writer(csvFile, delimiter=',')
-    csvWriter.writerow(['Extension name']+releases)
-
-  allStats = {}
-
-  for extensionName in extensionsList:
-
-    release_downloads = logic.getExtensionDownloadStats(extensionName)
-
-    allStats[extensionName] = release_downloads
-
-    if csvWriter:
-      extensionStats = [extensionName]
-      for release in releases:
-        if release in release_downloads:
-          extensionStats = extensionStats+[release_downloads[release]]
-        else:
-          extensionStats = extensionStats+['0']
-      csvWriter.writerow(extensionStats)
+  extension_release_downloads = logic.getExtensionDownloadStats(extensionsList)
 
   if args.jsonName:
-    jsonStats = json.dumps(allStats, indent=2)
+    jsonStats = json.dumps(extension_release_downloads, indent=2)
     with open(args.jsonName, 'w') as jsonFile:
       jsonFile.write(jsonStats)
+
+  if args.csvName:
+    with open(args.csvName, 'w', newline='') as csvFile:
+      csvWriter = csv.writer(csvFile, delimiter=',')
+
+      releases = logic.getSlicerReleaseNames()
+      csvWriter.writerow(['Extension name']+releases)
+
+      for extensionName in extensionsList:
+        if extensionName not in extension_release_downloads:
+          continue
+
+        release_downloads = extension_release_downloads[extensionName]
+        extensionStats = [extensionName]
+        for release in releases:
+          if release in release_downloads:
+            extensionStats = extensionStats+[release_downloads[release]]
+          else:
+            extensionStats = extensionStats+['0']
+        csvWriter.writerow(extensionStats)
+
 
   sys.exit(0)
 
