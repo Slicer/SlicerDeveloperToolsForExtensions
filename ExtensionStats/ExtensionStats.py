@@ -21,6 +21,13 @@ class ExtensionStats(ScriptedLoadableModule):
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
+
+    # # Set module icon from Resources/Icons/<ModuleName>.png
+    # moduleDir = os.path.dirname(self.parent.path)
+    # iconPath = os.path.join(moduleDir, 'Resources/Icons', self.moduleName+'.svg')
+    # if os.path.isfile(iconPath):
+    #   parent.icon = qt.QIcon(iconPath)
+
     self.parent.title = "Extension Download Statistics" # TODO make this more human readable by adding spaces
     self.parent.categories = ["Developer Tools"]
     self.parent.dependencies = []
@@ -141,7 +148,7 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
       for columnIndex in range(table.GetNumberOfColumns()):
         if columnIndex>0:
           tableText += '\t'
-        tableText += table.GetColumn(columnIndex).GetValue(rowIndex)
+        tableText += str(table.GetColumn(columnIndex).GetValue(rowIndex))
     qt.QApplication.clipboard().setText(tableText)
 
 #
