@@ -196,7 +196,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
     self.legacyReleaseName = "legacy"
     self.unknownReleaseName = "unknown"
 
-    self.baselineExtensionDownloadStatsFile = os.path.dirname(slicer.modules.extensionstats.path) + "/Resources/ExtensionsDownloadStats-20210521.csv"    
+    self.baselineExtensionDownloadStatsFile = os.path.dirname(slicer.modules.extensionstats.path) + "/Resources/ExtensionsDownloadStats-20211027.csv"
 
     self.downloadstatsUrl = "https://slicer-packages.kitware.com/api/v1/app/5f4474d0e1d8c75dfc705482/downloadstats"
     self.downloadstats = None
