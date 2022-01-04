@@ -7,7 +7,7 @@ set(MODULE_PYTHON_SCRIPTS
   )
 
 set(MODULE_PYTHON_RESOURCES
-  Resources/Icons/${MODULE_NAME}.png
+  Resources/Icons/${MODULE_NAME}.svg
   Resources/ExtensionsDownloadStats-20211027.csv
   )
 
