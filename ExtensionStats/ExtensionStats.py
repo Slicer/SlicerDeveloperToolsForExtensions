@@ -169,7 +169,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
     ScriptedLoadableModuleLogic.__init__(self)
 
     # The list of revision for each release is reported here:
-    # http://wiki.slicer.org/slicerWiki/index.php/Release_Details
+    # https://github.com/Slicer/Slicer/wiki/Release-Details
     # Only stable releases must be listed here (preview releases
     # will be listed as post-SomeStableRelease)
     releases_revisions = {
@@ -195,6 +195,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
       '4.10.2': '28257',
       '4.11.20200930': '29402',
       '4.11.20210226': '29738',
+      '5.0.2': '30822',
     }
 
     # sort releases based on SVN revision
