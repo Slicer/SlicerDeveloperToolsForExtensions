@@ -196,6 +196,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
       '4.11.20200930': '29402',
       '4.11.20210226': '29738',
       '5.0.2': '30822',
+      '5.0.3': '30893',
     }
 
     # sort releases based on SVN revision
