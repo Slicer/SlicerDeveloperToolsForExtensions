@@ -200,6 +200,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
       '5.2.0': '31314',
       '5.2.1': '31317',
       '5.2.2': '31382',
+      '5.4.0': '31938',
       # NEXT RELEASE REVISION
     }
 
