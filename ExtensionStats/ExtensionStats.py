@@ -1,7 +1,7 @@
-from __future__ import print_function
-
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
+from slicer.i18n import tr as _
+from slicer.i18n import translate
 
 import json
 import logging
@@ -28,16 +28,12 @@ class ExtensionStats(ScriptedLoadableModule):
     # if os.path.isfile(iconPath):
     #   parent.icon = qt.QIcon(iconPath)
 
-    self.parent.title = "Extension Download Statistics" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["Developer Tools"]
+    self.parent.title = _("Extension Download Statistics")
+    self.parent.categories = [translate("qSlicerAbstractCoreModule", "Developer Tools")]
     self.parent.dependencies = []
     self.parent.contributors = ["Andras Lasso (PerkLab, Queen's University), Jean-Christophe Fillion-Robin (Kitware)"]
-    self.parent.helpText = """
-    This module retrieves cumulated download statistics for a Slicer extension from the Slicer app store.
-    """
-    self.parent.acknowledgementText = """
-    This work was funded by Cancer Care Ontario Applied Cancer Research Unit (ACRU) and the Ontario Consortium for Adaptive Interventions in Radiation Oncology (OCAIRO) grants.
-    """
+    self.parent.helpText = _("This module retrieves cumulated download statistics for a Slicer extension from the Slicer app store.")
+    self.parent.acknowledgementText = _("This work was funded by Cancer Care Ontario Applied Cancer Research Unit (ACRU) and the Ontario Consortium for Adaptive Interventions in Radiation Oncology (OCAIRO) grants.")
 
 #
 # ExtensionStatsWidget
@@ -59,7 +55,7 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
     # Parameters Area
     #
     parametersCollapsibleButton = ctk.ctkCollapsibleButton()
-    parametersCollapsibleButton.text = "Parameters"
+    parametersCollapsibleButton.text = _("Parameters")
     self.layout.addWidget(parametersCollapsibleButton)
 
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
@@ -69,24 +65,30 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
     self.extensionNameEdit = qt.QLineEdit()
     # Developers usually have a list of extensions that they are interested in, remember that in application settings
     self.extensionNameEdit.setText(qt.QSettings().value('ExtensionStats/ExtensionNames', ''))
-    self.extensionNameEdit.toolTip = "Comma-separated list of extension to collect download statistics for. If not specified then all extensions will be listed."
+    self.extensionNameEdit.toolTip = _("Comma-separated list of extension to collect download statistics for. If not specified then all extensions will be listed.")
     extensionNameBox.addWidget(self.extensionNameEdit)
 
     self.extensionNameAllButton = qt.QPushButton()
-    self.extensionNameAllButton.text = "all"
-    self.extensionNameAllButton.toolTip = "Get statistics for all extensions"
+    self.extensionNameAllButton.text = _("all")
+    self.extensionNameAllButton.toolTip = _("Get statistics for all extensions")
     extensionNameBox.addWidget(self.extensionNameAllButton)
 
-    parametersFormLayout.addRow("Extension names: ", extensionNameBox)
+    parametersFormLayout.addRow(_("Extension names: "), extensionNameBox)
 
-    self.applyButton = qt.QPushButton("Get download statistics")
-    self.applyButton.toolTip = "Get download statistics"
-    parametersFormLayout.addRow(self.applyButton)
+    self.totalDownloadsButton = qt.QPushButton(_("Get total downloads"))
+    self.totalDownloadsButton.toolTip = _("Get total number of downloaded extensions per release")
+    parametersFormLayout.addRow(self.totalDownloadsButton)
+    self.dailyDownloadsButton = qt.QPushButton(_("Get daily downloads"))
+    self.dailyDownloadsButton.toolTip = _("Get daily downloads for each extension, useful for plotting download counts over time."
+        " It is just a rough estimation, assuming that the download count is evenly distributed in the time period starting"
+        " with the release date and ending with the next release date. In reality, users keep using older extensions and downloading extensions for it."
+        )
+    parametersFormLayout.addRow(self.dailyDownloadsButton)
 
     # Stats table
     self.statsTableWidget = slicer.qMRMLTableView()
     self.statsTableWidget.setMRMLScene(slicer.mrmlScene)
-    parametersFormLayout.addRow("Statistics:", self.statsTableWidget)
+    parametersFormLayout.addRow(_("Statistics:"), self.statsTableWidget)
     policy = qt.QSizePolicy()
     policy.setVerticalStretch(1)
     policy.setHorizontalPolicy(qt.QSizePolicy.Expanding)
@@ -94,19 +96,20 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
     self.statsTableWidget.setSizePolicy(policy)
 
     self.statsTableNode = slicer.vtkMRMLTableNode()
-    self.statsTableNode.SetName('ExtensionStats')
-    self.statsTableNode.SetUseColumnNameAsColumnHeader(True)
+    self.statsTableNode.SetName(_('ExtensionStats'))
+    self.statsTableNode.SetUseColumnTitleAsColumnHeader(True)
     self.statsTableNode.SetUseFirstColumnAsRowHeader(True)
     slicer.mrmlScene.AddNode(self.statsTableNode)
     self.statsTableWidget.setMRMLTableNode(self.statsTableNode)
 
     # Copy to clipboard button
-    self.copyToClipboardButton = qt.QPushButton("Copy table to clipboard")
+    self.copyToClipboardButton = qt.QPushButton(_("Copy table to clipboard"))
     parametersFormLayout.addRow('', self.copyToClipboardButton)
 
     # connections
     self.extensionNameAllButton.connect('clicked()', self.populateExtensionNameEdit)
-    self.applyButton.connect('clicked(bool)', self.onApplyButton)
+    self.totalDownloadsButton.connect('clicked(bool)', self.onTotalDownloadsButton)
+    self.dailyDownloadsButton.connect('clicked(bool)', self.onDailyDownloadsButton)
     self.copyToClipboardButton.connect('clicked()', self.copyTableToClipboard)
 
     # Add vertical spacer
@@ -121,18 +124,25 @@ class ExtensionStatsWidget(ScriptedLoadableModuleWidget):
     extensionNames = ",".join(extensionsList)
     self.extensionNameEdit.setText(extensionNames)
 
-  def onApplyButton(self):
-
-    # Save last extension list
-    qt.QSettings().setValue('ExtensionStats/ExtensionNames', self.extensionNameEdit.text)
-
-    # Get list of extension names (can be used to limit the query)
+  def _selectedExtensionNames(self):
+    """Get list of extension names (can be used to limit the query)"""
     if self.extensionNameEdit.text.strip():
       extensionNames = list(map(str.strip, self.extensionNameEdit.text.split(',')))
     else:
       extensionNames = None
+    return extensionNames
 
-    self.logic.getExtensionDownloadStatsAsTable(self.statsTableNode, extensionNames)
+  def onTotalDownloadsButton(self):
+    # Save last extension list
+    qt.QSettings().setValue('ExtensionStats/ExtensionNames', self.extensionNameEdit.text)
+    with slicer.util.tryWithErrorDisplay(_("Unexpected error."), waitCursor=True):
+      self.logic.getExtensionDownloadStatsAsTable(self.statsTableNode, self._selectedExtensionNames(), mode="total")
+
+  def onDailyDownloadsButton(self):
+    # Save last extension list
+    qt.QSettings().setValue('ExtensionStats/ExtensionNames', self.extensionNameEdit.text)
+    with slicer.util.tryWithErrorDisplay(_("Unexpected error."), waitCursor=True):
+      self.logic.getExtensionDownloadStatsAsTable(self.statsTableNode, self._selectedExtensionNames(), mode="daily")
 
   def copyTableToClipboard(self):
     table = self.statsTableNode.GetTable()
@@ -168,50 +178,53 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
   def __init__(self):
     ScriptedLoadableModuleLogic.__init__(self)
 
-    # The list of revision for each release is reported here:
-    # https://github.com/Slicer/Slicer/wiki/Release-Details
+    self.postReleasePrefix = "post-"
+
+    # The list of revision for each release is reported on these pages:
+    # -  https://github.com/Slicer/Slicer/wiki/Release-Details
+    # -  https://github.com/Slicer/Slicer/tags
     # Only stable releases must be listed here (preview releases
-    # will be listed as post-SomeStableRelease)
-    releases_revisions = {
-      '4.0.0': '18777',
-      '4.0.1': '19033',
-      '4.1.0': '19886',
-      '4.1.1': '20313',
-      '4.2.0': '21298',
-      '4.2.1': '21438',
-      '4.2.2': '21508',
-      '4.2.2-1': '21513',
-      '4.3.0': '22408',
-      '4.3.1': '22599',
-      '4.3.1-1': '22704',
-      '4.4.0': '23774',
-      '4.5.0-1': '24735',
-      '4.6.0': '25441',
-      '4.6.2': '25516',
-      '4.8.0': '26489',
-      '4.8.1': '26813',
-      '4.10.0': '27510',
-      '4.10.1': '27931',
-      '4.10.2': '28257',
-      '4.11.20200930': '29402',
-      '4.11.20210226': '29738',
-      '5.0.2': '30822',
-      '5.0.3': '30893',
-      '5.2.0': '31314',
-      '5.2.1': '31317',
-      '5.2.2': '31382',
-      '5.4.0': '31938',
-      '5.6.0': '32590',
-      '5.6.1': '32438',
-      '5.6.2': '32448',
+    # will be listed as post-SomeStableRelease).
+    releases_revisionsDates = {
+      '4.0.0': ['18777', '2011-11-27'],
+      '4.0.1': ['19033', '2012-01-06'],
+      '4.1.0': ['19886', '2012-04-12'],
+      '4.1.1': ['20313', '2012-06-01'],
+      '4.2.0': ['21298', '2012-10-31'],
+      '4.2.1': ['21438', '2012-11-16'],
+      '4.2.2': ['21508', '2012-12-07'],
+      '4.2.2-1': ['21513', '2012-12-08'],
+      '4.3.0': ['22408', '2013-09-04'],
+      '4.3.1': ['22599', '2013-10-04'],
+      '4.3.1-1': ['22704', '2013-11-14'],
+      '4.4.0': ['23774', '2014-11-02'],
+      '4.5.0-1': ['24735', '2015-11-12'],
+      '4.6.0': ['25441', '2016-10-13'],
+      '4.6.2': ['25516', '2016-11-08'],
+      '4.8.0': ['26489', '2017-10-18'],
+      '4.8.1': ['26813', '2017-12-19'],
+      '4.10.0': ['27510', '2018-10-17'],
+      '4.10.1': ['27931', '2019-01-15'],
+      '4.10.2': ['28257', '2019-05-16'],
+      '4.11.20200930': ['29402', '2020-09-30'],
+      '4.11.20210226': ['29738', '2021-02-26'],
+      '5.0.2': ['30822', '2022-05-06'],
+      '5.0.3': ['30893', '2022-07-08'],
+      '5.2.1': ['31317', '2022-11-24'],
+      '5.2.2': ['31382', '2023-02-21'],
+      '5.4.0': ['31938', '2023-08-19'],
+      '5.6.0': ['32390', '2023-11-16'],
+      '5.6.1': ['32438', '2023-12-12'],
+      '5.6.2': ['32448', '2024-04-05'],
       # NEXT RELEASE REVISION
     }
 
     # sort releases based on SVN revision
-    self.releases_revisions = sorted(releases_revisions.items(), key=lambda t: t[1])
+    self.releases_revisionsDates = sorted(releases_revisionsDates.items(), key=lambda t: t[1])
 
     self.legacyReleaseName = "legacy"
     self.unknownReleaseName = "unknown"
+    self.legacyReleaseDate = "2009-10-07"
 
     self.baselineExtensionDownloadStatsFile = os.path.dirname(slicer.modules.extensionstats.path) + "/Resources/ExtensionsDownloadStats-20211027.csv"
 
@@ -225,8 +238,14 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
 
   #---------------------------------------------------------------------------
   def getSlicerReleasesRevisions(self):
-    """Return dictionary of Slicer release and associated Slicer revision."""
-    return self.releases_revisions
+    """Return dictionary of Slicer release and associated Slicer revision.
+    Kept for backward compatibility only.
+    """
+    # Remove release date from self.releases_revisionsDates
+    releases_revisions = {}
+    for release, revision_date in self.releases_revisionsDates:
+      releases_revisions[release] = revision_date[0]
+    return releases_revisions
 
   #---------------------------------------------------------------------------
   def getSlicerReleaseNames(self):
@@ -234,11 +253,10 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
     legacy: before any known release.
     unknown: invalid revision (not integer)
     """
-    releasesRevisions = self.getSlicerReleasesRevisions()
     releases = [self.unknownReleaseName, self.legacyReleaseName]
-    for releaseRevision in releasesRevisions:
+    for releaseRevision in self.releases_revisionsDates:
       releases.append(releaseRevision[0])
-      releases.append('post-'+releaseRevision[0])
+      releases.append(self.postReleasePrefix + releaseRevision[0])
     return releases
 
   #---------------------------------------------------------------------------
@@ -248,23 +266,20 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
       associated with post-A "release".
       """
 
-      # Get sorted list of releases and nightly versions
-      releasesRevisions = self.getSlicerReleasesRevisions()
-
       try:
           revision = int(revision)
       except ValueError:
           return self.unknownReleaseName
 
       release = self.legacyReleaseName
-      for releaseRevision in releasesRevisions:
-          if revision < int(releaseRevision[1]):
+      for release_revisionDate in self.releases_revisionsDates:
+          if revision < int(release_revisionDate[1][0]):
               break
-          if revision == int(releaseRevision[1]):
+          if revision == int(release_revisionDate[1][0]):
               # Exact match to a release
-              release = releaseRevision[0]
+              release = release_revisionDate[0]
               break
-          release = 'post-'+releaseRevision[0]
+          release = self.postReleasePrefix + release_revisionDate[0]
 
       return release
 
@@ -334,18 +349,74 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
 
       return extension_release_downloads
 
-  def getExtensionDownloadStatsAsTable(self, statsTableNode, extensionNames):
-      
+  def getReleaseDate(self, release):
+    if release.startswith(self.postReleasePrefix):
+      release = release.removeprefix(self.postReleasePrefix)
+    for release_revisionDate in self.releases_revisionsDates:
+      if release_revisionDate[0] == release:
+        return release_revisionDate[1][1]
+    return None
+
+  def getReleaseDurationDays(self, release):
+    if release.startswith(self.postReleasePrefix):
+      release = release.removeprefix(self.postReleasePrefix)
+    startDate = None
+    endDate = None
+    for release_revisionDate in self.releases_revisionsDates:
+      if not startDate:
+        # Looking for release date
+        if release_revisionDate[0] == release:
+          startDate = release_revisionDate[1][1]
+      else:
+        # Release date is found, now get the next release date
+        endDate = release_revisionDate[1][1]
+    if not startDate:
+      raise ValueError("Cannot determine release duration for release: " + release)
+    if not endDate:
+      # Get current date as string
+      endDate = time.strftime("%Y-%m-%d")
+    # Get duration in days
+    startDate = time.strptime(startDate, "%Y-%m-%d")
+    endDate = time.strptime(endDate, "%Y-%m-%d")
+    startDateSec = time.mktime(startDate)
+    endDateSec = time.mktime(endDate)
+    return int((endDateSec - startDateSec) / (24 * 3600))
+
+  def getExtensionDownloadStatsAsTable(self, statsTableNode, extensionNames, mode=None):
+      """mode:
+        - `total` (default)
+        - `daily`
+      """
       # Initialize columns
+      if mode is None:
+        mode = "total"
 
       extensionNamesColumn = vtk.vtkStringArray()
       extensionNamesColumn.SetName("Extension")
 
       releases = self.getSlicerReleaseNames()
+      releaseDurationDaysreleaseDurationDays = {}
       releaseColumns = {}
       for release in releases:
-        releaseColumns[release] = vtk.vtkIntArray()
-        releaseColumns[release].SetName(release)
+        if mode == "total":
+          releaseColumns[release] = vtk.vtkIntArray()
+          date = self.getReleaseDate(release)
+          if date and not release.startswith(self.postReleasePrefix):
+            name = f"{release} ({self.getReleaseDate(release)})"
+          else:
+            name = release
+          releaseColumns[release].SetName(name)
+        elif mode == "daily":
+          if release in [self.unknownReleaseName, self.legacyReleaseName]:
+            # we don't have dates for these releases, so we ignore them
+            continue
+          if release.startswith(self.postReleasePrefix):
+            # we merge release and post-release stats
+            continue
+          releaseColumns[release] = vtk.vtkFloatArray()
+          releaseColumns[release].SetName(self.getReleaseDate(release))
+        else:
+          raise ValueError("Invalid mode: " + mode)
 
       # Fill columns
 
@@ -358,14 +429,26 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
             continue
           extensionNamesColumn.InsertNextValue(extensionName)
           release_downloads = extension_release_downloads[extensionName]
-          for release in releases:
-              releaseColumns[release].InsertNextValue(release_downloads[release] if (release in release_downloads) else 0)
+          if mode == "total":
+            for release in releaseColumns:
+                releaseColumns[release].InsertNextValue(release_downloads[release] if (release in release_downloads) else 0)
+          elif mode == "daily":
+            for release in releaseColumns:
+                releaseDurationDay = self.getReleaseDurationDays(release)
+                dailyDownloadCount = 0
+                if release in release_downloads:
+                  dailyDownloadCount += release_downloads[release] / releaseDurationDay
+                if self.postReleasePrefix + release in release_downloads:
+                  dailyDownloadCount += release_downloads[self.postReleasePrefix + release] / releaseDurationDay
+                releaseColumns[release].InsertNextValue(dailyDownloadCount)
+          else:
+            raise ValueError("Invalid mode: " + mode)
 
       # Add columns to table
-      
+
       statsTableNode.RemoveAllColumns()
       statsTableNode.AddColumn(extensionNamesColumn)
-      for release in releases:
+      for release in releaseColumns:
         statsTableNode.AddColumn(releaseColumns[release])
       statsTableNode.Modified()
 
