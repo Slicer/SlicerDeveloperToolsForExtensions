@@ -221,6 +221,7 @@ class ExtensionStatsLogic(ScriptedLoadableModuleLogic):
       '5.10.0': ['34045', '2025-11-10'],
       '5.12.0': ['34621', '2026-06-24'],
       '5.12.1': ['34624', '2026-07-09'],
+      '5.12.2': ['34625', '2026-07-15'],
       # NEXT RELEASE REVISION
     }
 
